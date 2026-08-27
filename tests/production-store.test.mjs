@@ -31,6 +31,21 @@ test("proposal does not mutate project before approval", async () => {
   assert.equal(result.manifest.revision, 1);
 });
 
+test("approval can apply user-adjusted presentation parameters", async () => {
+  const store = createProductionStore({ persist: false });
+  const proposal = await store.propose("set_project", {
+    title: "Projet test",
+    aspectRatio: "16:9",
+    durationSeconds: 8,
+  }, "test");
+  const result = await store.decide(proposal.id, "approve", {
+    aspectRatio: "9:16",
+    durationSeconds: 4,
+  });
+  assert.equal(result.manifest.project.aspectRatio, "9:16");
+  assert.equal(result.manifest.project.durationSeconds, 4);
+});
+
 test("rejected proposal leaves manifest unchanged", async () => {
   const store = createProductionStore({ persist: false });
   const proposal = await store.propose("set_project", { title: "Refusé" }, "test");

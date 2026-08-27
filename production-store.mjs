@@ -59,6 +59,7 @@ export function createEmptyManifest(now = () => new Date().toISOString()) {
       brief: "",
       aspectRatio: "16:9",
       fps: 24,
+      durationSeconds: 8,
       status: "draft",
     },
     assets: [],
@@ -120,6 +121,9 @@ function applyOperation(manifest, operation, now) {
     if (brief) manifest.project.brief = brief;
     if (args.aspectRatio) manifest.project.aspectRatio = cleanText(args.aspectRatio, 12);
     if (args.fps !== undefined) manifest.project.fps = positiveInteger(args.fps, manifest.project.fps, 1, 120);
+    if (args.durationSeconds !== undefined) {
+      manifest.project.durationSeconds = positiveInteger(args.durationSeconds, manifest.project.durationSeconds, 1, 3_600);
+    }
     return { entityType: "project", entityId: manifest.project.id, tab: "projet" };
   }
 
@@ -328,7 +332,7 @@ export function createProductionStore({
       return clone(approval);
     },
 
-    async decide(approvalId, decision) {
+    async decide(approvalId, decision, argsOverride = null) {
       const approval = manifest.approvals.find((item) => item.id === approvalId);
       if (!approval) fail("La proposition est introuvable.", 404);
       if (approval.status !== "pending") fail("Cette proposition a déjà reçu une décision.", 409);
@@ -343,6 +347,12 @@ export function createProductionStore({
 
       const next = clone(manifest);
       const nextApproval = next.approvals.find((item) => item.id === approvalId);
+      if (argsOverride !== null) {
+        if (!argsOverride || typeof argsOverride !== "object" || Array.isArray(argsOverride)) {
+          fail("Les paramètres ajustés sont invalides.");
+        }
+        nextApproval.operation.args = { ...nextApproval.operation.args, ...clone(argsOverride) };
+      }
       const result = applyOperation(next, nextApproval.operation, now);
       next.revision += 1;
       next.updatedAt = now();
@@ -390,7 +400,7 @@ export function summarizeManifest(manifest) {
   return {
     revision: manifest.revision,
     project: manifest.project.id
-      ? { title: manifest.project.title, brief: manifest.project.brief, aspectRatio: manifest.project.aspectRatio, fps: manifest.project.fps }
+      ? { title: manifest.project.title, brief: manifest.project.brief, aspectRatio: manifest.project.aspectRatio, fps: manifest.project.fps, durationSeconds: manifest.project.durationSeconds }
       : null,
     assets: manifest.assets.map(({ id, type, name }) => ({ id, type, name })).slice(0, 40),
     sequences: manifest.sequences.map(({ id, title, order }) => ({ id, title, order })).slice(0, 30),

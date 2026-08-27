@@ -1,0 +1,226 @@
+html:not(.bridge-ready) .panes-host > .pane,
+html:not(.bridge-ready) [data-thread] {
+  visibility: hidden;
+}
+
+.bridge-empty {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  text-align: center;
+}
+
+.bridge-empty-inner {
+  max-width: 520px;
+}
+
+.bridge-empty-mark {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--cobalt-hi);
+  background: rgba(47, 94, 245, 0.12);
+  border: 1px solid rgba(77, 123, 255, 0.28);
+  font-size: 20px;
+}
+
+.bridge-actions,
+.choice-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.bridge-actions {
+  justify-content: center;
+}
+
+.bridge-choice {
+  display: grid;
+  gap: 14px;
+  border-color: rgba(77, 123, 255, 0.22);
+}
+
+.choice-kicker {
+  color: var(--cobalt-hi);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.choice-title {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.choice-summary {
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.choice-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.choice-field label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ink-3);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.choice-field select {
+  width: 100%;
+  height: 39px;
+  padding: 0 34px 0 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  color: var(--ink);
+  background: var(--sunk);
+  box-shadow: var(--press-sm);
+  cursor: pointer;
+}
+
+.choice-field select:focus-visible,
+.choice-action:focus-visible {
+  outline: 2px solid var(--cobalt-hi);
+  outline-offset: 2px;
+}
+
+.choice-action {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  color: var(--ink);
+  background: var(--raise);
+  box-shadow: var(--relief-sm);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.choice-action.primary {
+  border-color: rgba(77, 123, 255, 0.5);
+  background: var(--cobalt);
+}
+
+.choice-action:hover {
+  border-color: rgba(203, 214, 232, 0.3);
+}
+
+.choice-technical {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.choice-technical summary {
+  cursor: pointer;
+}
+
+.choice-technical pre {
+  max-height: 130px;
+  margin: 8px 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--ink-2);
+  font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.bridge-metric {
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.bridge-list {
+  display: grid;
+  gap: 9px;
+}
+
+.bridge-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--card);
+}
+
+.bridge-row-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.bridge-row-main strong,
+.bridge-row-main small {
+  display: block;
+}
+
+.bridge-row-main small {
+  margin-top: 3px;
+  color: var(--ink-3);
+}
+
+.bridge-timeline {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--sunk);
+}
+
+.bridge-track {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  min-height: 48px;
+  border-bottom: 1px solid var(--line);
+}
+
+.bridge-track:last-child {
+  border-bottom: 0;
+}
+
+.bridge-track-name,
+.bridge-clips {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+}
+
+.bridge-track-name {
+  color: var(--ink-3);
+  border-right: 1px solid var(--line);
+  font-size: 11px;
+}
+
+.bridge-clip {
+  max-width: 180px;
+  padding: 7px 9px;
+  overflow: hidden;
+  border: 1px solid rgba(77, 123, 255, 0.3);
+  border-radius: 10px;
+  color: #cbd7ff;
+  background: rgba(47, 94, 245, 0.12);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .choice-fields { grid-template-columns: 1fr; }
+  .bridge-track { grid-template-columns: 88px minmax(0, 1fr); }
+}

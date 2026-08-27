@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const { chromium } = require("playwright");
 
 const baseUrl = process.env.CINEMAI_TEST_URL || "http://127.0.0.1:4175";
+const screenshotPrefix = process.env.CINEMAI_SCREENSHOT_PREFIX || "tests/cinemai-workspace";
 const tabs = ["projet", "script", "production", "personnages", "decors", "export"];
 
 async function exerciseViewport(browser, name, viewport, useButton) {
@@ -30,14 +31,14 @@ async function exerciseViewport(browser, name, viewport, useButton) {
   // Re-open the active workspace after the final assistant interaction. On
   // mobile, composing intentionally scrolls to the assistant below the view.
   await page.locator('.rail-item[data-tab="export"]').click();
-  await page.locator("#workspace h1", { hasText: "Export" }).waitFor();
+  await page.locator('.panes-host > [data-tab="export"] h1', { hasText: "Export" }).waitFor();
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   assert.equal(overflow, false, `${name}: débordement horizontal`);
   assert.deepEqual(consoleErrors, [], `${name}: erreurs console`);
   assert.deepEqual(externalRequests, [], `${name}: requêtes externes`);
   if (process.env.CINEMAI_SKIP_SCREENSHOTS !== "1") {
-    await page.screenshot({ path: `tests/cinemai-workspace-${name}.png`, fullPage: true });
+    await page.screenshot({ path: `${screenshotPrefix}-${name}.png`, fullPage: true });
   }
   await page.close();
 }

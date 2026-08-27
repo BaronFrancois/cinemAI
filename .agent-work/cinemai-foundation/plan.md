@@ -298,3 +298,34 @@ ordonne des clips et des pistes, mais n'implémente ni effets complexes ni rendu
 - État : `approved`
 - Révision approuvée : 4
 - Autorisation : exécution autonome immédiate
+
+## Révision 5 — restauration Odyssey et choix rapides
+
+Approuvée le 2026-08-27 par François après revue du premier parcours Gemini.
+
+### Ajustements demandés
+
+1. Restaurer le design Odyssey précédemment validé, avec le panneau métier et
+   l'assistant de production persistant.
+2. Limiter la première réponse à deux propositions structurées, puis à trois
+   propositions maximum une fois le projet cadré.
+3. Présenter ces propositions sous forme de cartes directement actionnables,
+   sans JSON visible par défaut.
+4. Permettre de modifier le format, la durée cible et, pour un plan, sa stratégie
+   avant la validation humaine.
+5. Dédupliquer visuellement les anciennes propositions strictement identiques
+   sans supprimer leur trace du manifeste.
+
+### Preuves attendues
+
+- limitation appliquée côté serveur, même si le modèle renvoie trop d'outils ;
+- aucune mutation du projet avant le clic de validation ;
+- valeurs modifiées dans la carte appliquées au manifeste après validation ;
+- parcours des six onglets sans erreur console, requête externe ni débordement ;
+- validation desktop et mobile du design restauré.
+
+### Validation
+
+- État : `approved`
+- Révision approuvée : 5
+- Autorisation : poursuite de l'implémentation et de la vérification

@@ -3,8 +3,8 @@
 ## État courant
 
 - Statut : `verifying`
-- Révision de plan : 4
-- Révision approuvée : 4
+- Révision de plan : 5
+- Révision approuvée : 5
 - Étape terminée techniquement : manifeste-first, approbations humaines et cockpit Odyssey connecté
 - Checkpoint courant : validation humaine du parcours réel avec Gemini
 
@@ -14,9 +14,9 @@ Le studio démarre sans projet, personnage, décor, plan ni média d’exemple. 
 
 Production et Export lisent la même timeline canonique. Elle comporte une piste visuelle et cinq pistes audio séparées : dialogues, voix off, bruitages, ambiances et musique. La file locale applique des transitions contrôlées et ne déclenche aucun fournisseur payant.
 
-L’interface Odyssey responsive expose six onglets, le copilote persistant, les cartes d’approbation, la file et la timeline. Le guide `test-guide.html` contient huit prompts paramétrables et les résultats attendus, sans données narratives préchargées.
+L’interface Odyssey responsive expose six onglets, le copilote persistant, les cartes d’approbation, la file et la timeline. Le design Odyssey précédemment validé a été restauré. La première réponse est limitée à deux propositions et les suivantes à trois ; format, durée et stratégie de plan peuvent être ajustés directement avant validation. Le guide `test-guide.html` contient huit prompts paramétrables et les résultats attendus, sans données narratives préchargées.
 
-Preuves automatisées : 17 tests Node verts ; smoke Playwright desktop/mobile sur les six onglets, clavier, bouton et guide ; smoke Playwright isolé prouvant proposition visible, absence de mutation initiale, validation explicite et application de la mutation. Les captures desktop/mobile ont été inspectées visuellement.
+Preuves automatisées : 20 tests Node verts ; smoke Playwright desktop/mobile sur les six onglets, clavier, bouton et guide ; smoke Playwright isolé prouvant proposition visible, déduplication, absence de mutation initiale, validation explicite et application des paramètres ajustés. Les captures desktop/mobile ont été inspectées visuellement.
 
 ## Limites explicites
 

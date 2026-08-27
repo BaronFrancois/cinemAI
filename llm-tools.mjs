@@ -9,6 +9,7 @@ export const GEMINI_FUNCTION_DECLARATIONS = [
         brief: { type: "string", description: "Intention et contraintes du projet." },
         aspectRatio: { type: "string", description: "Format visuel, par exemple 16:9 ou 9:16." },
         fps: { type: "integer", description: "Cadence cible." },
+        durationSeconds: { type: "integer", description: "Durée totale cible en secondes." },
       },
     },
   },

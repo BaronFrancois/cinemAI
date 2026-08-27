@@ -169,7 +169,7 @@ test("serves the canonical Odyssey UI with restrictive headers", async () => {
     const response = await fetch(baseUrl);
     assert.equal(response.status, 200);
     assert.match(response.headers.get("content-security-policy"), /connect-src 'self'/);
-    assert.match(await response.text(), /CinemAI — Odyssey/);
+    assert.match(await response.text(), /CinemAI (?:&mdash;|—) Odyssey/);
   });
 });
 
@@ -200,6 +200,59 @@ test("assistant function calls become pending proposals before mutation", async 
     });
     assert.equal(decision.status, 200);
     assert.equal((await decision.json()).manifest.project.title, "Projet test");
+  }, { fetchImpl, store });
+});
+
+test("first assistant response exposes at most two proposals", async () => {
+  const calls = [
+    { name: "set_project", args: { title: "Projet" } },
+    { name: "create_asset", args: { assetType: "character", name: "Personnage" } },
+    { name: "create_asset", args: { assetType: "location", name: "Décor" } },
+    { name: "create_sequence", args: { title: "Séquence" } },
+  ];
+  const fetchImpl = async () => new Response(JSON.stringify({
+    candidates: [{ content: { parts: calls.map((call) => ({ functionCall: call })) } }],
+  }), { status: 200, headers: { "Content-Type": "application/json" } });
+  const store = createProductionStore({ persist: false });
+  const config = { ...mockConfig, mode: "google", apiKey: "test-secret" };
+  await withServer(config, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tab: "projet", message: "Prépare le projet." }),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.proposals.length, 2);
+    assert.equal(body.omittedProposalCount, 2);
+    assert.equal(body.manifest.approvals.length, 2);
+  }, { fetchImpl, store });
+});
+
+test("framed projects expose at most three proposals", async () => {
+  const calls = [
+    { name: "create_asset", args: { assetType: "character", name: "Personnage A" } },
+    { name: "create_asset", args: { assetType: "location", name: "Décor A" } },
+    { name: "create_sequence", args: { title: "Séquence A" } },
+    { name: "create_sequence", args: { title: "Séquence B" } },
+  ];
+  const fetchImpl = async () => new Response(JSON.stringify({
+    candidates: [{ content: { parts: calls.map((call) => ({ functionCall: call })) } }],
+  }), { status: 200, headers: { "Content-Type": "application/json" } });
+  const store = createProductionStore({ persist: false });
+  const projectProposal = await store.propose("set_project", { title: "Projet cadré" }, "test");
+  await store.decide(projectProposal.id, "approve");
+  const config = { ...mockConfig, mode: "google", apiKey: "test-secret" };
+  await withServer(config, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tab: "projet", message: "Poursuis le cadrage." }),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.proposals.length, 3);
+    assert.equal(body.omittedProposalCount, 1);
   }, { fetchImpl, store });
 });
 

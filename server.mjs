@@ -173,12 +173,15 @@ function validateChatPayload(payload) {
 }
 
 function systemInstruction(tab, manifestSummary) {
+  const proposalLimit = manifestSummary.project ? 3 : 2;
   return [
     "Tu es l'assistant de production de CinemAI, un atelier local de préparation de films génératifs.",
     "Réponds en français, de façon concise, concrète et orientée modification vérifiable.",
     "Ne prétends jamais avoir généré, enregistré, publié ou modifié un élément si aucune action outil ne l'a fait.",
     "Utilise les outils pour toute création ou modification structurée. Chaque appel devient une proposition soumise à validation humaine.",
-    "Tu peux appeler plusieurs outils, mais n'invente jamais un identifiant absent de l'état courant.",
+    `Propose au maximum ${proposalLimit} actions structurées dans cette réponse. Regroupe ton raisonnement : l'utilisateur doit voir des choix, pas une liste de micro-tâches.`,
+    "Pour un premier cadrage, privilégie set_project et au plus un asset ou une séquence indispensable.",
+    "Tu peux appeler plusieurs outils dans cette limite, mais n'invente jamais un identifiant absent de l'état courant.",
     "Préserve les identifiants, la continuité et le périmètre demandé. Ne lance aucune dépense ni publication.",
     `Contexte de l'onglet actif : ${TAB_CONTEXT[tab]}`,
     `État structuré courant : ${JSON.stringify(manifestSummary)}`,
@@ -340,7 +343,8 @@ export function createCinemaiServer({
           return;
         }
         const payload = await readJsonBody(request);
-        const result = await store.decide(decodeURIComponent(approvalMatch[1]), String(payload?.decision || ""));
+        const argsOverride = payload?.args === undefined ? null : payload.args;
+        const result = await store.decide(decodeURIComponent(approvalMatch[1]), String(payload?.decision || ""), argsOverride);
         sendJson(response, 200, { ...result, requestId });
         return;
       }
@@ -388,7 +392,8 @@ export function createCinemaiServer({
               fetchImpl,
             });
         const proposals = [];
-        for (const functionCall of result.functionCalls || []) {
+        const proposalLimit = store.snapshot().project.id ? 3 : 2;
+        for (const functionCall of (result.functionCalls || []).slice(0, proposalLimit)) {
           proposals.push(await store.propose(functionCall.name, functionCall.args, `assistant:${requestId}`));
         }
         sendJson(response, 200, {
@@ -398,6 +403,7 @@ export function createCinemaiServer({
           mode: config.mode,
           model: config.model,
           usage: result.usage,
+          omittedProposalCount: Math.max(0, (result.functionCalls || []).length - proposalLimit),
           requestId,
         });
         logger.info?.("chat", {
