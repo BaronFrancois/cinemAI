@@ -1,0 +1,14 @@
+# Secrets locaux
+.env
+.env.*
+!.env.example
+
+# Configurations propres à une machine
+*.local
+machine-profile.local.yaml
+
+# Dépendances et sorties reconstruisibles
+node_modules/
+dist/
+coverage/
+*.log

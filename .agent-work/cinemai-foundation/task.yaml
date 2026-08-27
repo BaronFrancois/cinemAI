@@ -1,0 +1,36 @@
+id: cinemai-foundation
+objective: >-
+  Définir puis construire un prototype local capable de décrire une séquence de cinq plans,
+  modifier un seul plan ou segment et prouver que les autres plans ainsi que les références
+  de continuité restent inchangés.
+status: verifying
+plan_revision: 3
+approved_revision: 3
+owner: codex
+created_at: 2026-08-20T20:56:41+02:00
+updated_at: 2026-08-24T14:18:50+02:00
+scope:
+  - Contrat produit du MVP CinemAI Continuum
+  - Production Manifest local et versionné
+  - Compilation déterministe d'un plan depuis des identifiants stables
+  - Démonstration d'une correction locale avec preuve avant/après
+non_goals:
+  - Génération automatique d'un film complet
+  - Choix définitif d'un fournisseur vidéo ou d'un modèle
+  - Entraînement ou distillation d'un SLM
+  - Publication YouTube et boucle analytique
+  - Éditeur vidéo multicouche complet
+acceptance:
+  - Une séquence exemple contient exactement cinq plans et des assets à identifiants stables
+  - Une correction ciblée produit une nouvelle version du seul plan concerné
+  - Les quatre autres plans sont byte-for-byte inchangés dans le test déterministe
+  - Les dépendances de continuité affectées sont listées explicitement
+  - Le parcours est reproductible localement par une commande documentée
+constraints:
+  - Local-first
+  - Aucun secret dans le dépôt
+  - Aucun appel cloud obligatoire pour valider le cœur du MVP
+  - Validation humaine obligatoire avant l'exécution de la révision 1
+  - Aucune intégration LLM ou clé Google dans le lot UI Odyssey
+  - Clé Google lisible uniquement par le serveur local
+  - Une requête réelle minimale autorisée pour valider Flash 3.5

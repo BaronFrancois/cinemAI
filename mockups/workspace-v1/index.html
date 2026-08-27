@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="fr" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#eef2f6" />
+    <title>CinemAI — maquette Continuum</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-workspace">Aller à la bande de plans</a>
+
+    <div class="app-shell">
+      <header class="app-header">
+        <a class="brand" href="#" aria-label="CinemAI, accueil du projet">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="brand-copy"><strong>CinemAI</strong><small>Continuum · maquette P0</small></span>
+        </a>
+
+        <div class="project-chip" aria-label="Projet ouvert">
+          <span class="project-chip__dot"></span>
+          <span><small>Projet</small><strong>Le dernier signal</strong></span>
+        </div>
+
+        <div class="header-actions">
+          <span class="local-badge"><span aria-hidden="true">●</span> Local</span>
+          <button class="button button--ghost button--compact" id="theme-toggle" type="button" aria-pressed="false">
+            <span aria-hidden="true">◐</span><span class="theme-label">Sombre</span>
+          </button>
+          <button class="button button--primary button--compact" id="export-button" type="button">
+            Exporter le manifeste
+          </button>
+        </div>
+      </header>
+
+      <div class="workspace-frame">
+        <aside class="sidebar" aria-label="Navigation du projet">
+          <div class="sidebar-tabs" role="tablist" aria-label="Sections latérales">
+            <button class="sidebar-tab is-active" role="tab" aria-selected="true" data-tab="project">Projet</button>
+            <button class="sidebar-tab" role="tab" aria-selected="false" data-tab="assets">Assets</button>
+            <button class="sidebar-tab" role="tab" aria-selected="false" data-tab="history">Versions</button>
+          </div>
+
+          <div class="sidebar-body" id="sidebar-project" data-panel="project">
+            <p class="section-label">Production</p>
+            <button class="project-row" type="button">
+              <span class="project-icon" aria-hidden="true">▶</span>
+              <span><strong>Le dernier signal</strong><small>24 s · 16:9 · v0.3</small></span>
+            </button>
+            <nav class="project-tree" aria-label="Contenu du projet">
+              <button type="button"><span aria-hidden="true">✦</span> Intention</button>
+              <button type="button"><span aria-hidden="true">♙</span> Personnages <b>2</b></button>
+              <button type="button"><span aria-hidden="true">⌂</span> Décors <b>1</b></button>
+              <button class="is-active" type="button"><span aria-hidden="true">▤</span> Plans <b>5</b></button>
+              <button type="button"><span aria-hidden="true">↻</span> Corrections <b>1</b></button>
+            </nav>
+            <p class="section-label section-label--spaced">Assets liés</p>
+            <div class="asset-mini-list">
+              <button type="button"><span class="asset-avatar">MA</span><span><strong>Mara</strong><small>char_mara · v4</small></span></button>
+              <button type="button"><span class="asset-avatar asset-avatar--nox">NX</span><span><strong>Nox</strong><small>char_nox · v2</small></span></button>
+              <button type="button"><span class="asset-avatar asset-avatar--loc">ST</span><span><strong>Station météo</strong><small>loc_station · v3</small></span></button>
+            </div>
+          </div>
+
+          <div class="sidebar-body is-hidden" id="sidebar-assets" data-panel="assets">
+            <p class="section-label">Registre canonique</p>
+            <p class="sidebar-empty">3 assets stables. Chaque plan les appelle par ID et version.</p>
+          </div>
+
+          <div class="sidebar-body is-hidden" id="sidebar-history" data-panel="history">
+            <p class="section-label">Versions locales</p>
+            <ol class="version-list"><li><strong>v0.3</strong><span>Rupture détectée · maintenant</span></li><li><strong>v0.2</strong><span>Plans compilés · 18:42</span></li><li><strong>v0.1</strong><span>Manifeste créé · 18:31</span></li></ol>
+          </div>
+
+          <div class="sidebar-footer">
+            <button type="button"><span aria-hidden="true">⚙</span> Réglages du projet</button>
+            <span class="manifest-state"><i></i> Manifeste local synchronisé</span>
+          </div>
+        </aside>
+
+        <main class="main-workspace" id="main-workspace">
+          <section class="objective-banner" aria-labelledby="objective-title">
+            <span class="objective-icon" aria-hidden="true">⚑</span>
+            <div><span class="kicker">Objectif actif</span><h1 id="objective-title">Corriger le plan 03 sans toucher aux quatre autres</h1><p>La veste de Mara doit rester déchirée après l'incident du plan 02.</p></div>
+            <span class="step-chip">P0 · Maquette</span>
+          </section>
+
+          <section class="editor-shell" aria-labelledby="sequence-title">
+            <header class="editor-toolbar">
+              <div><span class="kicker">Séquence 01</span><h2 id="sequence-title">La balise</h2></div>
+              <div class="toolbar-actions">
+                <button class="button button--ghost button--compact" id="compare-button" type="button" aria-pressed="false">Comparer</button>
+                <button class="button button--primary button--compact" id="scan-button" type="button">Analyser la continuité</button>
+              </div>
+            </header>
+
+            <div class="sequence-summary">
+              <span><strong>5</strong> plans</span><span><strong>24 s</strong> durée</span><span><strong>3</strong> assets</span><span class="summary-issue"><strong>1</strong> rupture</span>
+            </div>
+
+            <div class="continuity-stage" id="continuity-stage">
+              <div class="continuity-line" aria-hidden="true"><i></i><i></i><i class="line-break"></i><i></i></div>
+              <div class="shot-strip" role="list" aria-label="Plans de la séquence">
+                <button class="shot-card" type="button" role="listitem" data-shot="1" aria-label="Plan 01, stable">
+                  <span class="shot-frame shot-frame--one"><i></i></span><span class="shot-order">01</span><span class="shot-copy"><strong>Arrivée</strong><small>4 s · plan large</small></span><span class="status status--stable">Stable</span>
+                </button>
+                <button class="shot-card" type="button" role="listitem" data-shot="2" aria-label="Plan 02, stable">
+                  <span class="shot-frame shot-frame--two"><i></i></span><span class="shot-order">02</span><span class="shot-copy"><strong>L'incident</strong><small>5 s · travelling</small></span><span class="status status--stable">Stable</span>
+                </button>
+                <button class="shot-card is-selected has-issue" type="button" role="listitem" data-shot="3" aria-label="Plan 03, rupture de continuité" aria-current="true">
+                  <span class="shot-frame shot-frame--three"><i></i><em>!</em></span><span class="shot-order">03</span><span class="shot-copy"><strong>La reprise</strong><small>6 s · plan moyen</small></span><span class="status status--issue">Rupture</span>
+                </button>
+                <button class="shot-card" type="button" role="listitem" data-shot="4" aria-label="Plan 04, à contrôler">
+                  <span class="shot-frame shot-frame--four"><i></i></span><span class="shot-order">04</span><span class="shot-copy"><strong>La balise</strong><small>5 s · gros plan</small></span><span class="status status--review">À contrôler</span>
+                </button>
+                <button class="shot-card" type="button" role="listitem" data-shot="5" aria-label="Plan 05, stable">
+                  <span class="shot-frame shot-frame--five"><i></i></span><span class="shot-order">05</span><span class="shot-copy"><strong>Le signal</strong><small>4 s · plan large</small></span><span class="status status--stable">Stable</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="impact-bar" role="status" aria-live="polite">
+              <span class="impact-icon" aria-hidden="true">⌁</span>
+              <div><span class="kicker">Impact prévu</span><p id="impact-copy"><strong>1 plan sera versionné.</strong> Les plans 01, 02, 04 et 05 resteront inchangés.</p></div>
+              <span class="hash-diff"><small>Hash cible</small><code>8f2a… → en attente</code></span>
+            </div>
+          </section>
+        </main>
+
+        <aside class="inspector" aria-labelledby="inspector-title">
+          <header class="inspector-header">
+            <span class="inspector-mark" aria-hidden="true">C</span>
+            <div><span class="kicker">Assistant de continuité</span><h2 id="inspector-title">Plan 03 · La reprise</h2></div>
+          </header>
+
+          <div class="inspector-body">
+            <div class="issue-panel" id="issue-panel">
+              <div class="issue-heading"><span class="issue-symbol" aria-hidden="true">!</span><div><span class="kicker">Écart observé</span><strong id="issue-title">État de costume incohérent</strong></div></div>
+              <p id="issue-description">Mara porte une veste intacte alors que le plan 02 a établi une déchirure à l'épaule gauche.</p>
+            </div>
+
+            <section class="state-section" aria-labelledby="state-title">
+              <h3 id="state-title">État de continuité</h3>
+              <div class="state-compare"><div><small>Observé</small><code id="observed-state">jacket_clean</code></div><span aria-hidden="true">→</span><div><small>Attendu</small><code id="expected-state">jacket_torn_left</code></div></div>
+            </section>
+
+            <section class="correction-section" aria-labelledby="correction-title">
+              <label id="correction-title" for="correction-input">Instruction de correction</label>
+              <textarea id="correction-input" rows="4">Conserver le cadrage et la lumière. Remplacer uniquement l'état de la veste de Mara par jacket_torn_left.</textarea>
+              <div class="scope-row"><span>Périmètre</span><strong>Plan 03 uniquement</strong></div>
+              <div class="scope-row"><span>Dépendances à revoir</span><strong>Plan 04 · costume</strong></div>
+            </section>
+
+            <button class="button button--primary button--wide action-button" id="prepare-button" type="button">
+              <span aria-hidden="true">✦</span> Préparer la correction locale
+            </button>
+            <p class="action-help">Aucune génération payante. Une nouvelle version locale sera préparée.</p>
+
+            <div class="compare-panel" id="compare-panel" hidden>
+              <span class="kicker">Comparaison</span>
+              <div><span><small>Avant</small><code>shot_03@v2</code></span><b>→</b><span><small>Après</small><code>shot_03@v3</code></span></div>
+              <p>4 plans non modifiés · 1 dépendance à contrôler</p>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
+

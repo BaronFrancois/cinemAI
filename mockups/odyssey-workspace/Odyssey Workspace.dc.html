@@ -1,0 +1,3024 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="./support.js"></script>
+  </head>
+  <body>
+    <x-dc>
+      <helmet data-dc-atomics>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+        <style>
+          :root {
+            --night: #14181f;
+            --pane: #1c212a;
+            --card: #242830;
+            --raise: #2c313a;
+            --line: rgba(203, 214, 232, 0.11);
+            --line-soft: rgba(203, 214, 232, 0.06);
+            --ink: #eef1f6;
+            --ink-2: #a8b0bd;
+            --ink-3: #757d8a;
+            --cobalt: #2f5ef5;
+            --cobalt-hi: #4d7bff;
+            --amber: #d8a45f;
+            --r-pane: 26px;
+            --r-card: 20px;
+            --r-ctl: 14px;
+            --relief: inset 1px 1px 0 rgba(236, 243, 255, 0.09), 10px 16px 34px -22px rgba(0, 0, 0, 0.95);
+            --relief-sm: inset 1px 1px 0 rgba(236, 243, 255, 0.08), 4px 7px 16px -12px rgba(0, 0, 0, 0.9);
+            --press: inset -2px 2px 7px -1px rgba(0, 0, 0, 0.6), inset 1px -1px 0 rgba(236, 243, 255, 0.05);
+            --press-sm: inset -1px 2px 5px -1px rgba(0, 0, 0, 0.5);
+            --sunk: #171b22;
+          }
+          * {
+            box-sizing: border-box;
+          }
+          body {
+            margin: 0;
+            background: var(--night);
+            color: var(--ink);
+            font-family: Manrope, "Helvetica Neue", Helvetica, sans-serif;
+            -webkit-font-smoothing: antialiased;
+          }
+          a {
+            color: var(--cobalt-hi);
+            text-decoration: none;
+          }
+          a:hover {
+            color: #7fa0ff;
+          }
+          .app {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background:
+              radial-gradient(1100px 520px at 14% -12%, rgba(47, 94, 245, 0.09), transparent 70%),
+              var(--night);
+            overflow: hidden;
+          }
+          .ico {
+            width: 22px;
+            height: 22px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            flex: none;
+          }
+          .ico-s {
+            width: 16px;
+            height: 16px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.7;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            flex: none;
+          }
+
+          /* ---------- topbar ---------- */
+          .topbar {
+            height: 62px;
+            position: relative;
+            flex: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0 14px 0 18px;
+          }
+          .wordmark {
+            font-size: 19px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-right: 8px;
+          }
+          .wordmark span {
+            color: var(--cobalt-hi);
+          }
+          .proj-pick {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            height: 40px;
+            padding: 0 12px 0 14px;
+            border-radius: 999px;
+            background: var(--raise);
+            border: 1px solid var(--line);
+            box-shadow: var(--relief-sm);
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+          }
+          .proj-pick:hover {
+            border-color: rgba(203, 214, 232, 0.24);
+          }
+          .dot-live {
+            width: 7px;
+            height: 7px;
+            border-radius: 999px;
+            background: var(--amber);
+            box-shadow: 0 0 0 3px rgba(216, 164, 95, 0.14);
+          }
+          .btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            height: 36px;
+            padding: 0 14px;
+            border-radius: 999px;
+            background: var(--raise);
+            border: 1px solid var(--line);
+            box-shadow: var(--relief-sm);
+            color: var(--ink);
+            font: 600 13px Manrope, sans-serif;
+            cursor: pointer;
+            user-select: none;
+          }
+          .btn:hover {
+            background: #333944;
+          }
+          .btn:active {
+            transform: translateY(1px);
+          }
+          .btn:hover { border-color: rgba(203, 214, 232, 0.22); }
+          .btn:active, .ctl:active, .ghost:active, .chip:active, .mini:active {
+            box-shadow: var(--press-sm);
+          }
+          .btn-cobalt {
+            background: linear-gradient(180deg, var(--cobalt-hi), var(--cobalt));
+            border-color: rgba(255, 255, 255, 0.16);
+            color: #fff;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 10px 20px -10px rgba(47, 94, 245, 0.8);
+          }
+          .btn-cobalt:hover {
+            background: linear-gradient(180deg, #618cff, #3a68f7);
+          }
+          .btn-icon {
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            justify-content: center;
+          }
+          .spacer {
+            flex: 1;
+          }
+
+          /* ---------- rail ---------- */
+          .body {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            gap: 0;
+            padding: 0 12px 12px 12px;
+          }
+          .rail {
+            width: 92px;
+            flex: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 0;
+            position: relative;
+            z-index: 2;
+            min-height: 0;
+          }
+          .rail-scroll {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            scrollbar-width: thin;
+            scrollbar-color: color-mix(in srgb, var(--ink-3) 42%, transparent) transparent;
+          }
+          .rail-scroll::-webkit-scrollbar { width: 4px; }
+          .rail-scroll::-webkit-scrollbar-track { background: transparent; }
+          .rail-scroll::-webkit-scrollbar-thumb {
+            background: color-mix(in srgb, var(--ink-3) 42%, transparent);
+            border-radius: 999px;
+          }
+          .rail-item { flex: none; }
+          .rail-account { flex: none; margin-top: 10px; }
+          .rail-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            padding: 13px 6px 12px;
+            border-radius: 0;
+            color: var(--ink-2);
+            font: 600 11px Manrope, sans-serif;
+            cursor: pointer;
+            background: var(--raise);
+            border: 1px solid var(--line);
+            border-bottom: none;
+            border-right: none;
+            box-shadow: none;
+            transition: color 0.15s ease;
+          }
+          .rail-scroll .rail-item:first-child:not(.on) { border-radius: 18px 0 0 0; }
+          .rail-scroll .rail-item:last-child { border-bottom: 1px solid var(--line); }
+          .rail-scroll .rail-item:last-child:not(.on) { border-radius: 0 0 0 18px; }
+          .rail-item, .rail-item.on { border-right: 0; }
+          .rail-item:hover {
+            color: #fff;
+            border-top-color: rgba(236, 243, 255, 0.26);
+            border-left-color: rgba(236, 243, 255, 0.2);
+          }
+          .rail-item.on {
+            color: #fff;
+            background: var(--pane);
+            border: 1px solid var(--line-soft);
+            border-right: none;
+            border-radius: 18px 0 0 18px;
+            margin: -1px -3px -1px 0;
+            padding-right: 7px;
+            box-shadow: inset 3px 3px 7px -3px rgba(0, 0, 0, 0.65);
+          }
+
+          /* ---------- split ---------- */
+          .split {
+            --split: 50;
+            flex: 1;
+            min-width: 0;
+            display: grid;
+            grid-template-columns: calc(var(--split) * 1%) 34px minmax(0, 1fr);
+          }
+          .pane {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            border-radius: var(--r-pane);
+            background: var(--pane);
+            border: 1px solid var(--line-soft);
+            box-shadow: inset -3px 3px 10px -3px rgba(0, 0, 0, 0.6), inset 1px -1px 0 rgba(236, 243, 255, 0.05);
+            overflow: hidden;
+          }
+          .divider {
+            width: 16px;
+            margin: 0 -9px 0 9px;
+            flex: none;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            position: relative;
+          }
+          .divider::before {
+            content: "";
+            position: absolute;
+            top: 18px;
+            bottom: 18px;
+            width: 0;
+          }
+          .split-rail {
+            position: absolute;
+            inset: 14px 7px;
+            border-radius: 2px;
+            background: var(--line);
+            opacity: 0.5;
+            cursor: col-resize;
+            transition: opacity 0.12s;
+          }
+          .split-rail::before {
+            content: "";
+            position: absolute;
+            inset: 0 -7px;
+          }
+          .split-rail:hover { opacity: 0.9; }
+          .split-chevs {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 30px;
+            pointer-events: none;
+            color: var(--ink-3);
+            font: 600 13px Manrope, sans-serif;
+            z-index: 1;
+          }
+          .split-knob {
+            position: relative;
+            z-index: 2;
+            width: 16px;
+            height: 46px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 0;
+            border-radius: 8px;
+            background: var(--raise);
+            color: var(--ink-2);
+            font: 600 13px Manrope, sans-serif;
+            cursor: pointer;
+            box-shadow: inset 1px 1px 0 rgba(236, 243, 255, 0.14), 4px 7px 16px -12px rgba(0, 0, 0, 0.9);
+            transition: filter 0.12s, box-shadow 0.12s;
+          }
+          .split-knob:hover { filter: brightness(1.25); color: #fff; }
+          .split-knob:active { box-shadow: var(--press-sm); }
+          .split-knob.is-collapsed { transform: scaleX(-1); }
+          .readout {
+            writing-mode: vertical-rl;
+            font: 600 10px ui-monospace, Menlo, monospace;
+            letter-spacing: 0.08em;
+            color: var(--ink-3);
+            z-index: 1;
+          }
+
+          .rail-collapse {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            height: 34px;
+            margin: 0 8px 0 2px;
+            border-radius: 999px;
+            background: var(--raise);
+            border: 1px solid var(--line);
+            border-top-color: rgba(236, 243, 255, 0.16);
+            border-left-color: rgba(236, 243, 255, 0.13);
+            box-shadow: var(--relief-sm);
+            color: var(--ink-2);
+            font: 600 11px Manrope, sans-serif;
+            cursor: pointer;
+          }
+          .rail-collapse:hover { color: #fff; border-top-color: rgba(236, 243, 255, 0.26);
+            border-left-color: rgba(236, 243, 255, 0.2); }
+          .rail-collapse:active { box-shadow: var(--press-sm); }
+          .rail-collapse.is-collapsed svg { transform: scaleX(-1); }
+          .rail-collapse.is-collapsed span { font-size: 0; }
+          .rail-collapse.is-collapsed span::before {
+            content: "Ouvrir";
+            font-size: 11px;
+          }
+
+          .pane-min {
+            width: 26px;
+            height: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            background: var(--raise);
+            border: 1px solid var(--line);
+            border-top-color: rgba(236, 243, 255, 0.16);
+            border-left-color: rgba(236, 243, 255, 0.13);
+            box-shadow: var(--relief-sm);
+            color: var(--ink-2);
+            font: 600 15px Manrope, sans-serif;
+            line-height: 1;
+            cursor: pointer;
+            flex: none;
+          }
+          .pane-min:hover { color: #fff; }
+          .pane-min:active { box-shadow: var(--press-sm); }
+          .pane-head .eyebrow-row { display: flex; align-items: center; gap: 10px; }
+          .pane-head .eyebrow-row .eyebrow { flex: 1; min-width: 0; }
+
+          .row-x {
+            flex: none;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            color: var(--ink-3);
+            font-size: 10px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.12s ease;
+          }
+          .seq:hover .row-x, .scene:hover .row-x, .node:hover .row-x, .plan:hover .row-x { opacity: 1; }
+          .row-x:hover { color: #fff; background: rgba(203, 214, 232, 0.1); }
+          .seq-add, .scene-add, .node-add {
+            border-style: dashed;
+            color: var(--ink-2);
+            cursor: pointer;
+            box-shadow: none;
+            background: transparent;
+            font: 600 12.5px Manrope, sans-serif;
+          }
+          .node-add { border: 1px dashed var(--line); justify-content: center; }
+          .seq-add:hover, .scene-add:hover, .node-add:hover { color: #fff; border-color: rgba(203, 214, 232, 0.28); }
+          .sw-add {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: 1px dashed var(--line);
+            color: var(--ink-3);
+            font-size: 12px;
+            cursor: pointer;
+          }
+          .sw-add:hover { color: #fff; }
+
+          /* ---------- tuiles de chronologie ---------- */
+          .tiles { display: flex; flex-direction: column; gap: 8px; }
+          .tile {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            padding: 11px 13px;
+            border-radius: var(--r-ctl);
+            background: var(--raise);
+            border: 1px solid var(--line);
+            border-top-color: rgba(236, 243, 255, 0.13);
+            border-left-color: rgba(236, 243, 255, 0.1);
+            box-shadow: var(--relief-sm);
+          }
+          .tile:hover { border-top-color: rgba(236, 243, 255, 0.22); }
+          .tile-head { display: flex; align-items: center; flex-wrap: wrap; row-gap: 6px; gap: 10px; }
+          .tile-head .tile-title { min-width: 0; }
+          .tile-title { font: 700 13.5px Manrope, sans-serif; color: var(--ink); }
+          .tile-body {
+            margin: 0;
+            font: 500 12.5px/1.6 Manrope, sans-serif;
+            color: var(--ink-2);
+            text-wrap: pretty;
+          }
+          .tile-add {
+            padding: 10px 13px;
+            border-radius: var(--r-ctl);
+            border: 1px dashed var(--line);
+            color: var(--ink-3);
+            font: 600 12.5px Manrope, sans-serif;
+            cursor: text;
+          }
+          .tile-add:hover { color: var(--ink); border-color: rgba(203, 214, 232, 0.28); }
+          .tile-draft {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 11px 13px;
+            border-radius: var(--r-ctl);
+            background: var(--sunk);
+            border: 1px solid var(--line);
+            box-shadow: var(--press-sm);
+          }
+          .tile-draft [contenteditable] { outline: none; }
+          .tile-draft .d-title { font: 700 13.5px Manrope, sans-serif; color: var(--ink); }
+          .tile-draft .d-body { font: 500 12.5px/1.6 Manrope, sans-serif; color: var(--ink-2); min-height: 20px; }
+          .tile-draft .ph { color: var(--ink-3); }
+
+          .ent {
+            color: var(--ink);
+            text-decoration: none;
+            border-bottom: 1px solid rgba(120, 158, 255, 0.45);
+            cursor: pointer;
+            padding-bottom: 1px;
+          }
+          .ent:hover { color: #fff; border-bottom-color: var(--cobalt-hi); }
+          .ent-decor { border-bottom-color: rgba(216, 164, 95, 0.5); }
+          .ent-decor:hover { border-bottom-color: var(--amber); }
+          .ent-card {
+            position: fixed;
+            z-index: 50;
+            width: 200px;
+            padding: 8px;
+            border-radius: 14px;
+            background: var(--card);
+            border: 1px solid var(--line);
+            box-shadow: 10px 16px 34px -18px rgba(0, 0, 0, 0.95);
+            pointer-events: none;
+          }
+          .ent-card .frame { height: 96px; margin-bottom: 7px; }
+          .ent-card b { display: block; font: 700 12px Manrope, sans-serif; color: var(--ink); }
+          .ent-card i {
+            display: block;
+            font: 500 10.5px Manrope, sans-serif;
+            font-style: normal;
+            color: var(--ink-3);
+            margin-top: 2px;
+          }
+
+          .rail-account {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            margin: 0 8px 0 2px;
+            padding: 10px 6px;
+            border-radius: 16px;
+            background: var(--raise);
+            border: 1px solid var(--line);
+            border-top-color: rgba(236, 243, 255, 0.16);
+            border-left-color: rgba(236, 243, 255, 0.13);
+            box-shadow: var(--relief-sm);
+            color: var(--ink-2);
+            font: 600 11px Manrope, sans-serif;
+            cursor: pointer;
+          }
+          .rail-account:hover { color: #fff; border-top-color: rgba(236, 243, 255, 0.26); }
+          .rail-account:active { box-shadow: var(--press-sm); }
+          .rail-account .av { width: 24px; height: 24px; font-size: 10px; }
+
+          /* ---------- pane chrome ---------- */
+          .pane-head {
+            flex: none;
+            padding: 13px 18px 11px;
+            border-bottom: 1px solid var(--line-soft);
+          }
+          .pane-head .fx.ac.jb { flex-wrap: wrap; row-gap: 8px; }
+          .pane-head .h1 { min-width: 0; }
+          .eyebrow {
+            font: 700 10px ui-monospace, Menlo, monospace;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--ink-3);
+          }
+          .pane-scroll {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 14px 20px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+          }
+          .pane-scroll::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+          }
+          .pane-scroll::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+          .pane-scroll::-webkit-scrollbar-track { background: transparent; }
+          .pane-scroll::-webkit-scrollbar-corner { background: transparent; }
+          .pane-scroll::-webkit-scrollbar-thumb {
+            background: color-mix(in srgb, var(--ink-3) 42%, transparent);
+            border-radius: 999px;
+          }
+          .pane-scroll::-webkit-scrollbar-thumb:hover {
+            background: color-mix(in srgb, var(--ink-3) 62%, transparent);
+          }
+          .pane-foot {
+            flex: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            row-gap: 4px;
+            padding: 9px 18px;
+            border-top: 1px solid var(--line-soft);
+            background: rgba(20, 24, 31, 0.45);
+            font: 500 12px Manrope, sans-serif;
+            color: var(--ink-3);
+          }
+          .h1 {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: -0.025em;
+            margin: 2px 0 0;
+          }
+          .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            height: 28px;
+            padding: 0 12px;
+            border-radius: 999px;
+            background: rgba(216, 164, 95, 0.1);
+            border: 1px solid rgba(216, 164, 95, 0.26);
+            color: #e6bd85;
+            font: 600 12px Manrope, sans-serif;
+          }
+          .sec-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--ink-2);
+            margin-bottom: 9px;
+          }
+          .sec-title {
+            font: 700 10.5px Manrope, sans-serif;
+            color: var(--ink-2);
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+          }
+          .hint {
+            font: 500 11px Manrope, sans-serif;
+            color: var(--ink-3);
+          }
+          .ghost {
+            height: 28px;
+            padding: 0 11px;
+            border-radius: 999px;
+            background: transparent;
+            border: 1px solid var(--line);
+            color: var(--ink-2);
+            font: 600 11px Manrope, sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+          }
+          .ghost:hover {
+            color: #fff;
+            border-color: rgba(120, 158, 255, 0.4);
+          }
+          .card {
+            border-radius: var(--r-card);
+            background: var(--card);
+            border: 1px solid var(--line-soft);
+            box-shadow: var(--relief-sm);
+            padding: 12px;
+          }
+
+          /* ---------- controls ---------- */
+          .field-label {
+            font: 600 11px Manrope, sans-serif;
+            color: var(--ink-3);
+            margin-bottom: 6px;
+            display: block;
+          }
+          .ctl {
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 0 11px 0 13px;
+            border-radius: var(--r-ctl);
+            background: var(--raise);
+            border: 1px solid var(--line);
+            box-shadow: var(--relief-sm);
+            font: 600 12.5px Manrope, sans-serif;
+            color: var(--ink);
+            cursor: pointer;
+          }
+          .ctl:hover {
+            border-color: rgba(120, 158, 255, 0.35);
+          }
+          .grid2 > * { min-width: 0; }
+          .grid2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+            gap: 12px;
+          }
+          .stepper {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            color: var(--ink-3);
+            line-height: 0.8;
+            font-size: 11px;
+          }
+          .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+          }
+          .chip {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            height: 34px;
+            padding: 0 12px;
+            border-radius: 999px;
+            background: var(--raise);
+            border: 1px solid var(--line);
+            box-shadow: var(--relief-sm);
+            font: 600 12.5px Manrope, sans-serif;
+          }
+          .chip-x {
+            color: var(--ink-3);
+            font-size: 13px;
+            cursor: pointer;
+          }
+          .chip-x:hover {
+            color: #fff;
+          }
+          .chip-add {
+            border-style: dashed;
+            color: var(--ink-2);
+            cursor: pointer;
+          }
+          .chip-add:hover {
+            color: #fff;
+            border-color: rgba(120, 158, 255, 0.45);
+          }
+          .refs {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+          }
+          .frame {
+            height: 62px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background-color: var(--sunk);
+            border: 1px solid var(--line-soft);
+            box-shadow: var(--press-sm);
+            background-image: repeating-linear-gradient(
+              -45deg,
+              rgba(203, 214, 232, 0.08) 0 6px,
+              transparent 6px 12px
+            );
+            display: flex;
+            align-items: flex-end;
+            padding: 6px;
+            position: relative;
+            overflow: hidden;
+          }
+          .frame span {
+            font: 500 9px ui-monospace, Menlo, monospace;
+            color: var(--ink-3);
+            background: rgba(20, 24, 31, 0.78);
+            padding: 2px 5px;
+            border-radius: 5px;
+          }
+          .frame-x {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            width: 18px;
+            height: 18px;
+            border-radius: 999px;
+            background: rgba(20, 24, 31, 0.85);
+            border: 1px solid var(--line);
+            color: var(--ink-2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            cursor: pointer;
+          }
+          .frame-add {
+            height: 62px;
+            border-radius: 12px;
+            border: 1px dashed var(--line);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            color: var(--ink-3);
+            font: 600 10.5px Manrope, sans-serif;
+            text-align: center;
+            cursor: pointer;
+          }
+          .frame-add:hover {
+            color: #fff;
+            border-color: rgba(120, 158, 255, 0.45);
+          }
+          .swatches {
+            display: flex;
+            gap: 10px;
+          }
+          .sw {
+            width: 38px;
+            height: 38px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 6px 14px -8px rgba(0, 0, 0, 0.9);
+            cursor: pointer;
+          }
+          .sw:hover {
+            outline: 2px solid rgba(120, 158, 255, 0.55);
+            outline-offset: 2px;
+          }
+          .sw-add {
+            width: 38px;
+            height: 38px;
+            border-radius: 999px;
+            border: 1px dashed var(--line);
+            color: var(--ink-3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+          }
+          .shortcuts > * { min-width: 0; }
+          .shortcuts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+            gap: 12px;
+          }
+          .shortcut {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            height: 60px;
+            padding: 0 14px;
+            border-radius: var(--r-ctl);
+            background: var(--raise);
+            border: 1px solid var(--line);
+            box-shadow: var(--relief-sm);
+            cursor: pointer;
+          }
+          .shortcut:hover {
+            border-color: rgba(120, 158, 255, 0.35);
+          }
+          .shortcut b {
+            font: 700 13px Manrope, sans-serif;
+          }
+          .shortcut i {
+            font: 500 11px Manrope, sans-serif;
+            font-style: normal;
+            color: var(--ink-3);
+          }
+
+          /* ---------- conversation ---------- */
+          .thread {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+          }
+          .thread::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+          }
+          .thread::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+          .thread::-webkit-scrollbar-track { background: transparent; }
+          .thread::-webkit-scrollbar-corner { background: transparent; }
+          .thread::-webkit-scrollbar-thumb {
+            background: color-mix(in srgb, var(--ink-3) 42%, transparent);
+            border-radius: 999px;
+          }
+          .thread::-webkit-scrollbar-thumb:hover {
+            background: color-mix(in srgb, var(--ink-3) 62%, transparent);
+          }
+          .msg {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+          }
+          .av {
+            width: 30px;
+            height: 30px;
+            flex: none;
+            border-radius: 999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font: 800 12px Manrope, sans-serif;
+            border: 1px solid var(--line);
+            background: var(--raise);
+            color: var(--ink-2);
+            box-shadow: var(--relief-sm);
+          }
+          .av-ai {
+            background: linear-gradient(180deg, rgba(77, 123, 255, 0.35), rgba(47, 94, 245, 0.18));
+            border-color: rgba(120, 158, 255, 0.4);
+            color: #cfdcff;
+          }
+          .bubble {
+            border-radius: 18px;
+            padding: 12px 15px;
+            background: var(--card);
+            border: 1px solid var(--line-soft);
+            box-shadow: var(--relief-sm);
+            font: 500 13.5px/1.55 Manrope, sans-serif;
+            color: var(--ink);
+            text-wrap: pretty;
+          }
+          .prose {
+            font: 500 13.5px/1.6 Manrope, sans-serif;
+            color: var(--ink);
+            margin: 0;
+            text-wrap: pretty;
+          }
+          .proposal {
+            border-radius: var(--r-card);
+            background: var(--card);
+            border: 1px solid var(--line);
+            box-shadow: var(--relief-sm);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 11px;
+          }
+          .proposal-frames > * { min-width: 0; }
+          .proposal-frames {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(110px, 100%), 1fr));
+            gap: 9px;
+          }
+          .proposal-frames .frame {
+            height: 118px;
+          }
+
+          /* ---------- composer ---------- */
+          .composer-wrap {
+            flex: none;
+            padding: 12px 16px 16px;
+            position: relative;
+          }
+          .ctx {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            height: 40px;
+            padding: 0 12px 0 13px;
+            border-radius: 14px 14px 0 0;
+            background: rgba(44, 49, 58, 0.55);
+            border: 1px solid var(--line);
+            border-bottom: none;
+            font: 600 12px Manrope, sans-serif;
+            color: var(--ink-2);
+          }
+          .ctx-check {
+            width: 18px;
+            height: 18px;
+            border-radius: 6px;
+            background: linear-gradient(180deg, var(--cobalt-hi), var(--cobalt));
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            cursor: pointer;
+          }
+          .ctx-strong {
+            color: var(--ink);
+            font-weight: 700;
+          }
+          .composer {
+            border-radius: 0 0 var(--r-card) var(--r-card);
+            background: var(--raise);
+            border: 1px solid var(--line);
+            box-shadow: var(--relief);
+            padding: 12px 12px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+          }
+          .composer-input {
+            font: 500 13.5px Manrope, sans-serif;
+            color: var(--ink);
+            padding: 4px 2px 2px;
+            min-height: 20px;
+          }
+          .composer-input.empty { color: var(--ink-3); }
+          .composer-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .round {
+            width: 36px;
+            height: 36px;
+            border-radius: 999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(203, 214, 232, 0.07);
+            border: 1px solid var(--line);
+            color: var(--ink-2);
+            cursor: pointer;
+          }
+          .round:hover {
+            color: #fff;
+            border-color: rgba(120, 158, 255, 0.4);
+          }
+          .send {
+            width: 44px;
+            height: 44px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(180deg, var(--cobalt-hi), var(--cobalt));
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: #fff;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 12px 22px -10px rgba(47, 94, 245, 0.85);
+            cursor: pointer;
+          }
+          .send:active {
+            transform: translateY(1px);
+          }
+          /* détaché : le contexte Projet flotte au-dessus du composeur */
+          .composer-wrap.detached .ctx {
+            position: absolute;
+            left: 16px;
+            bottom: 118px;
+            height: 38px;
+            border-radius: 999px;
+            border: 1px solid rgba(120, 158, 255, 0.45);
+            border-bottom: 1px solid rgba(120, 158, 255, 0.45);
+            background: var(--card);
+            box-shadow: var(--relief);
+          }
+          .composer-wrap.detached .composer {
+            border-radius: var(--r-card);
+          }
+          /* ---------- utilitaires ---------- */
+          .fx { display: flex; flex-wrap: wrap; row-gap: 8px; }
+          .fx.col { flex-wrap: nowrap; row-gap: 0; }
+          .fx.nowrap { flex-wrap: nowrap; }
+          .fx > .hint, .fx > .prose { min-width: 0; }
+          .col { flex-direction: column; }
+          .ac { align-items: center; }
+          .jb { justify-content: space-between; }
+          .gap6 { gap: 6px; }
+          .gap8 { gap: 8px; }
+          .gap10 { gap: 10px; }
+          .gap12 { gap: 12px; }
+          .off { display: none !important; }
+          .panes-host { min-width: 0; min-height: 0; overflow: hidden; display: flex; }
+          .panes-host .pane { flex: 1; min-width: 0; min-height: 0; border-radius: 0 var(--r-pane) var(--r-pane) var(--r-pane); }
+          .split.collapsed-left .panes-host { border: none; }
+
+          /* ---------- menus & saisie ---------- */
+          .menu {
+            position: fixed;
+            z-index: 40;
+            min-width: 180px;
+            padding: 6px;
+            border-radius: 16px;
+            background: var(--raise);
+            border: 1px solid var(--line);
+            box-shadow: 0 26px 50px -20px rgba(0, 0, 0, 0.95);
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+          }
+          .menu-item {
+            padding: 9px 11px;
+            border-radius: 11px;
+            font: 600 12.5px Manrope, sans-serif;
+            color: var(--ink-2);
+            cursor: pointer;
+          }
+          .menu-item:hover { background: rgba(203, 214, 232, 0.08); color: #fff; }
+          .menu-item em {
+            font-style: normal;
+            font: 600 10px Manrope, sans-serif;
+            color: var(--ink-3);
+            margin-left: auto;
+          }
+          .menu-item:has(em) { display: flex; align-items: center; gap: 12px; }
+          .menu-head {
+            padding: 7px 11px 5px;
+            font: 700 9.5px Manrope, sans-serif;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--ink-3);
+          }
+          .menu-item.on { color: #fff; background: var(--sunk); box-shadow: var(--press-sm); }
+          [contenteditable]:focus { outline: none; }
+          .chip [contenteditable] { min-width: 44px; }
+          .seq.dragging { opacity: 0.4; }
+          .seq.dropzone { border-color: rgba(120, 158, 255, 0.7); }
+          .seq.selected { border-color: rgba(120, 158, 255, 0.55); background: var(--sunk); box-shadow: var(--press); }
+          .seq.open { box-shadow: var(--press); background: var(--sunk); }
+          .typing { display: flex; gap: 4px; align-items: center; padding: 4px 0; }
+          .typing i {
+            width: 5px; height: 5px; border-radius: 999px; background: var(--ink-3);
+            animation: blip 1s infinite ease-in-out;
+          }
+          .typing i:nth-child(2) { animation-delay: 0.15s; }
+          .typing i:nth-child(3) { animation-delay: 0.3s; }
+          @keyframes blip { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+
+          /* ---------- script ---------- */
+          .act-head { display: flex; align-items: center; flex-wrap: wrap; row-gap: 6px; gap: 10px; margin-bottom: 10px; }
+          .act-head .sec-title { min-width: 0; }
+          .sec-head { flex-wrap: wrap; row-gap: 6px; }
+          .sec-head .sec-title { min-width: 0; }
+          .act-num {
+            width: 26px; height: 26px; border-radius: 999px; display: flex; align-items: center;
+            justify-content: center; background: var(--raise); border: 1px solid var(--line);
+            box-shadow: var(--relief-sm); font: 700 11px ui-monospace, Menlo, monospace; color: var(--ink-2);
+          }
+          .seq {
+            display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+            border-radius: var(--r-ctl); background: var(--raise); border: 1px solid var(--line);
+            box-shadow: var(--relief-sm); cursor: grab;
+          }
+          .seq:hover { border-color: rgba(120, 158, 255, 0.35); }
+          .seq.open { background: var(--card); align-items: stretch; flex-direction: column; gap: 10px; cursor: default; }
+          .seq-dots { display: grid; grid-template-columns: 2px 2px; gap: 3px; flex: none; }
+          .seq-dots i { width: 2px; height: 2px; border-radius: 999px; background: var(--ink-3); }
+          .seq-num { font: 700 11px ui-monospace, Menlo, monospace; color: var(--ink-3); flex: none; width: 20px; }
+          .seq-title { font: 700 13.5px Manrope, sans-serif; }
+          .scene {
+            display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px;
+            background: var(--sunk); border: 1px solid var(--line-soft);
+            box-shadow: var(--press-sm);
+            font: 500 12.5px Manrope, sans-serif; color: var(--ink-2);
+          }
+          .scene > span:nth-child(2) { flex: 1; min-width: 0; }
+          .scene .hint, .seq .hint { flex: none; white-space: nowrap; }
+          .sec-head .hint, .act-head .hint, .proposal > .fx.ac.gap8 > .hint,
+          .pane-head .hint { flex: none; white-space: nowrap; }
+          .prow > .fx.col { flex: 1; min-width: 0; }
+          .prow .prow-val { text-wrap: pretty; }
+          .note {
+            padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--line);
+            font: 500 12px/1.5 Manrope, sans-serif; color: var(--ink-2);
+          }
+
+          /* ---------- production ---------- */
+          .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr)); gap: 10px; }
+          .plans > * { min-width: 0; }
+          .plan {
+            border-radius: 14px; background: var(--raise); border: 1px solid var(--line);
+            box-shadow: var(--relief-sm); padding: 8px; display: flex; flex-direction: column; gap: 8px;
+          }
+          .plan:hover { border-color: rgba(120, 158, 255, 0.35); }
+          .plan .frame { height: 84px; }
+          .pill {
+            display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px;
+            border-radius: 999px; font: 700 10px Manrope, sans-serif; letter-spacing: 0.02em;
+            border: 1px solid var(--line-soft); color: var(--ink-2); background: var(--sunk);
+            box-shadow: var(--press-sm);
+          }
+          .pill-ok { color: #7fd6a8; border-color: rgba(127, 214, 168, 0.3); background: rgba(127, 214, 168, 0.08); }
+          .pill-wait { color: #e6bd85; border-color: rgba(216, 164, 95, 0.3); background: rgba(216, 164, 95, 0.08); }
+          .strip { display: flex; gap: 4px; }
+          .strip i {
+            height: 26px; border-radius: 6px; background: var(--raise); border: 1px solid var(--line);
+          }
+
+          /* ---------- dossiers ---------- */
+          .folders { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 14px; align-items: start; }
+          .folders > * { min-width: 0; }
+          .folders > .tree { max-width: 240px; }
+          .tree { display: flex; flex-direction: column; gap: 4px; }
+          .node {
+            display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 11px;
+            font: 600 12.5px Manrope, sans-serif; color: var(--ink-2); cursor: pointer;
+            border: 1px solid transparent;
+          }
+          .node:hover { background: rgba(203, 214, 232, 0.05); color: var(--ink); }
+          .node.on {
+            color: #fff;
+            background: var(--sunk);
+            border-color: var(--line);
+            box-shadow: var(--press);
+          }
+          .node.sub { margin-left: 18px; font-weight: 500; font-size: 12px; }
+          .assets { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr)); gap: 10px; }
+          .assets > * { min-width: 0; }
+          .assets .frame { height: 104px; }
+
+          /* ---------- propositions champ par champ ---------- */
+          .prow {
+            display: flex; align-items: center; gap: 10px; padding: 8px 11px; border-radius: 12px;
+            background: var(--raise); border: 1px solid var(--line); box-shadow: var(--relief-sm);
+          }
+          .prow-lab { font: 700 10px ui-monospace, Menlo, monospace; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+          .prow-val { font: 600 12.5px Manrope, sans-serif; color: var(--ink); }
+          .prow-acts { display: flex; align-items: center; gap: 6px; flex: none; }
+          .mini {
+            height: 26px; padding: 0 10px; border-radius: 999px; display: flex; align-items: center;
+            background: var(--raise); border: 1px solid var(--line); color: var(--ink-2);
+            box-shadow: var(--relief-sm);
+            font: 700 11px Manrope, sans-serif; cursor: pointer;
+          }
+          .mini:hover { color: #fff; border-color: rgba(120, 158, 255, 0.4); }
+          .mini-cobalt {
+            background: linear-gradient(180deg, var(--cobalt-hi), var(--cobalt)); color: #fff;
+            border-color: rgba(255, 255, 255, 0.18);
+          }
+        </style>
+      </helmet>
+
+      <div class="app" data-screen-label="Odyssey Workspace">
+        <!-- ============ barre supérieure ============ -->
+        <header class="topbar">
+          <div class="wordmark">Cinem<span>AI</span></div>
+          <div class="proj-pick">
+            <span class="dot-live"></span>
+            <span>Odyssey</span>
+            <svg class="ico-s" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </div>
+          <div class="btn">
+            <svg class="ico-s" viewBox="0 0 24 24">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>Nouveau projet</span>
+          </div>
+          <div class="spacer"></div>
+          <div class="btn">
+            <svg class="ico-s" viewBox="0 0 24 24">
+              <rect x="3" y="5" width="18" height="14" rx="3"></rect>
+              <line x1="3" y1="9" x2="21" y2="9"></line>
+            </svg>
+            <span>Tous les projets</span>
+          </div>
+          <div class="btn btn-icon">
+            <svg class="ico" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3.2"></circle>
+              <circle cx="12" cy="12" r="8.2"></circle>
+            </svg>
+          </div>
+        </header>
+
+        <div class="body">
+          <!-- ============ rail ============ -->
+          <nav class="rail">
+            <div class="rail-scroll">
+            <div class="rail-item on" data-tab="projet">
+              <svg class="ico" viewBox="0 0 24 24">
+                <rect x="3" y="4" width="18" height="16" rx="3.5"></rect>
+                <line x1="3" y1="9.5" x2="21" y2="9.5"></line>
+              </svg>
+              <span>Projet</span>
+            </div>
+            <div class="rail-item" data-tab="script">
+              <svg class="ico" viewBox="0 0 24 24">
+                <rect x="4.5" y="3" width="15" height="18" rx="3.5"></rect>
+                <line x1="8.5" y1="8.5" x2="15.5" y2="8.5"></line>
+                <line x1="8.5" y1="12" x2="15.5" y2="12"></line>
+                <line x1="8.5" y1="15.5" x2="13" y2="15.5"></line>
+              </svg>
+              <span>Script</span>
+            </div>
+            <div class="rail-item" data-tab="production">
+              <svg class="ico" viewBox="0 0 24 24">
+                <rect x="3" y="6" width="18" height="13" rx="3.5"></rect>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+                <circle cx="12" cy="14.5" r="2.4"></circle>
+              </svg>
+              <span>Production</span>
+            </div>
+            <div class="rail-item" data-tab="personnages">
+              <svg class="ico" viewBox="0 0 24 24">
+                <circle cx="9" cy="8.5" r="3"></circle>
+                <circle cx="16.5" cy="10" r="2.2"></circle>
+                <rect x="3.5" y="14.5" width="11" height="5.5" rx="2.75"></rect>
+                <rect x="15" y="15.5" width="5.5" height="4.5" rx="2.25"></rect>
+              </svg>
+              <span>Personnages</span>
+            </div>
+            <div class="rail-item" data-tab="decors">
+              <svg class="ico" viewBox="0 0 24 24">
+                <rect x="3" y="5" width="18" height="14" rx="3.5"></rect>
+                <polyline points="5.5 16 9.5 11 12.5 14 15 11.5 18.5 16"></polyline>
+                <circle cx="15.5" cy="8.5" r="1.4"></circle>
+              </svg>
+              <span>Décors</span>
+            </div>
+            <div class="rail-item" data-tab="export">
+              <svg class="ico" viewBox="0 0 24 24">
+                <polyline points="8 10.5 12 6.5 16 10.5"></polyline>
+                <line x1="12" y1="6.5" x2="12" y2="16"></line>
+                <path d="M5 15.5v3a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-3"></path>
+              </svg>
+              <span>Export</span>
+            </div>
+            </div>
+            <div class="rail-account" title="Compte">
+              <span class="av">F</span>
+              <span>Compte</span>
+            </div>
+          </nav>
+
+          <!-- ============ split ============ -->
+          <main class="split" id="odyssey-split">
+            <!-- ---- panneaux métier (gauche) ---- -->
+            <div class="panes-host">
+            <section class="pane" data-tab="projet" data-screen-label="Panneau Projet">
+              <div class="pane-head">
+                <div class="eyebrow-row">
+                  <div class="eyebrow">Projet</div>
+                  <div class="pane-min" title="Réduire le panneau">−</div>
+                </div>
+                <div class="fx col ac gap8" style="margin-top: 4px; text-align: center">
+                  <h1 class="h1">Odyssey</h1>
+                </div>
+              </div>
+
+              <div class="pane-scroll">
+                <!-- intention -->
+                <section>
+                  <div class="sec-head">
+                    <svg class="ico-s" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="8"></circle>
+                      <circle cx="12" cy="12" r="2.4"></circle>
+                    </svg>
+                    <span class="sec-title">Intention</span>
+                    <span class="hint">— tenue par le Script</span>
+                  </div>
+                  <div class="card fx col gap12">
+                    <p class="prose">
+                      Une navigatrice traverse un archipel englouti, guidée par une carte céleste qui
+                      s'efface à mesure qu'elle avance.
+                    </p>
+                    <div class="fx ac gap10">
+                      <div class="btn">
+                        <svg class="ico-s" viewBox="0 0 24 24">
+                          <polyline points="14 4 20 4 20 10"></polyline>
+                          <line x1="20" y1="4" x2="12" y2="12"></line>
+                          <path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"></path>
+                        </svg>
+                        <span>Ouvrir dans le script</span>
+                      </div>
+                      <span class="hint">Toute modification se répercute des deux côtés.</span>
+                    </div>
+                  </div>
+                </section>
+
+                <!-- paramètres vidéo -->
+                <section>
+                  <div class="sec-head">
+                    <svg class="ico-s" viewBox="0 0 24 24">
+                      <rect x="3" y="6" width="18" height="12" rx="3"></rect>
+                      <line x1="9" y1="6" x2="9" y2="18"></line>
+                    </svg>
+                    <span class="sec-title">Paramètres vidéo</span>
+                    <div class="spacer"></div>
+                    <span class="hint">Quatre réglages indépendants</span>
+                  </div>
+                  <div class="grid2">
+                    <div>
+                      <label class="field-label">Format</label>
+                      <div class="ctl">
+                        <span>16:9 — paysage</span>
+                        <svg class="ico-s" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                      </div>
+                    </div>
+                    <div>
+                      <label class="field-label">Résolution</label>
+                      <div class="ctl">
+                        <span>1080p</span>
+                        <svg class="ico-s" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                      </div>
+                    </div>
+                    <div>
+                      <label class="field-label">Durée</label>
+                      <div class="ctl">
+                        <span>60 s</span>
+                        <span class="stepper">
+                          <svg class="ico-s" viewBox="0 0 24 24" style="height: 11px"><polyline points="6 15 12 9 18 15"></polyline></svg>
+                          <svg class="ico-s" viewBox="0 0 24 24" style="height: 11px"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <label class="field-label">Générateur</label>
+                      <div class="ctl">
+                        <span>Veo</span>
+                        <svg class="ico-s" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="fx ac gap8" style="margin-top: 10px; color: #7fd6a8">
+                    <svg class="ico-s" viewBox="0 0 24 24"><polyline points="5 12.5 10 17 19 7"></polyline></svg>
+                    <span class="hint" style="color: #7fd6a8">Combinaison compatible — aucun réglage n'en contraint un autre.</span>
+                  </div>
+                </section>
+
+                <!-- ton -->
+                <section>
+                  <div class="sec-head">
+                    <svg class="ico-s" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="8"></circle>
+                      <line x1="9" y1="14" x2="15" y2="14"></line>
+                      <circle cx="9.2" cy="10" r="0.9"></circle>
+                      <circle cx="14.8" cy="10" r="0.9"></circle>
+                    </svg>
+                    <span class="sec-title">Ton</span>
+                    <span class="hint">— mots-clés</span>
+                  </div>
+                  <div class="chips">
+                    <span class="chip">Aventure<span class="chip-x">✕</span></span>
+                    <span class="chip">Mélancolique<span class="chip-x">✕</span></span>
+                    <span class="chip">Mystérieux<span class="chip-x">✕</span></span>
+                    <span class="chip chip-add">＋ Ajouter un mot-clé</span>
+                  </div>
+                </section>
+
+                <!-- style visuel -->
+                <section>
+                  <div class="sec-head">
+                    <svg class="ico-s" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="8"></circle>
+                      <circle cx="9" cy="9.5" r="1.1"></circle>
+                      <circle cx="14.5" cy="10" r="1.1"></circle>
+                      <circle cx="13" cy="15" r="1.1"></circle>
+                    </svg>
+                    <span class="sec-title">Style visuel</span>
+                    <div class="spacer"></div>
+                    <span class="ghost">Modifier</span>
+                  </div>
+                  <div class="ctl" style="margin-bottom: 10px">
+                    <span>Réaliste cinématique</span>
+                    <svg class="ico-s" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </div>
+                  <div class="refs">
+                    <div class="frame"><span>réf. 01</span><span class="frame-x">✕</span></div>
+                    <div class="frame"><span>réf. 02</span><span class="frame-x">✕</span></div>
+                    <div class="frame"><span>réf. 03</span><span class="frame-x">✕</span></div>
+                    <div class="frame-add">
+                      <svg class="ico-s" viewBox="0 0 24 24">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                      <span>Références</span>
+                    </div>
+                  </div>
+                </section>
+
+                <!-- palette -->
+                <section>
+                  <div class="sec-head">
+                    <svg class="ico-s" viewBox="0 0 24 24">
+                      <rect x="3.5" y="7" width="17" height="10" rx="3"></rect>
+                      <line x1="9" y1="7" x2="9" y2="17"></line>
+                      <line x1="15" y1="7" x2="15" y2="17"></line>
+                    </svg>
+                    <span class="sec-title">Palette de couleurs</span>
+                    <div class="spacer"></div>
+                    <span class="ghost">Modifier</span>
+                  </div>
+                  <div class="swatches">
+                    <span class="sw" style="background: #ece1cf"></span>
+                    <span class="sw" style="background: #d8a24a"></span>
+                    <span class="sw" style="background: #6f7261"></span>
+                    <span class="sw" style="background: #4a6b67"></span>
+                    <span class="sw" style="background: #b57b6b"></span>
+                    <span class="sw" style="background: #8d5a53"></span>
+                    <span class="sw sw-add">＋</span>
+                    <span class="sw" style="background: #3a2a20"></span>
+                    <span class="sw-add">
+                      <svg class="ico-s" viewBox="0 0 24 24">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                    </span>
+                  </div>
+                </section>
+
+                <!-- raccourcis -->
+                <section>
+                  <div class="sec-head">
+                    <span class="sec-title">Raccourcis</span>
+                  </div>
+                  <div class="shortcuts">
+                    <div class="shortcut">
+                      <svg class="ico" viewBox="0 0 24 24" style="color: var(--ink-2)">
+                        <circle cx="9" cy="8.5" r="3"></circle>
+                        <circle cx="16.5" cy="10" r="2.2"></circle>
+                        <rect x="3.5" y="14.5" width="11" height="5.5" rx="2.75"></rect>
+                        <rect x="15" y="15.5" width="5.5" height="4.5" rx="2.25"></rect>
+                      </svg>
+                      <span class="fx col">
+                        <b>Personnages</b>
+                        <i>4 fiches</i>
+                      </span>
+                    </div>
+                    <div class="shortcut">
+                      <svg class="ico" viewBox="0 0 24 24" style="color: var(--ink-2)">
+                        <rect x="3" y="5" width="18" height="14" rx="3.5"></rect>
+                        <polyline points="5.5 16 9.5 11 12.5 14 15 11.5 18.5 16"></polyline>
+                        <circle cx="15.5" cy="8.5" r="1.4"></circle>
+                      </svg>
+                      <span class="fx col">
+                        <b>Décors</b>
+                        <i>6 lieux</i>
+                      </span>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div class="pane-foot">
+                <svg class="ico-s" viewBox="0 0 24 24" style="color: #7fd6a8"><polyline points="5 12.5 10 17 19 7"></polyline></svg>
+                <span>Enregistré automatiquement · il y a 2 min</span>
+                <div class="spacer"></div>
+                <a href="#historique">Voir l'historique</a>
+              </div>
+            </section>
+
+            <!-- ---- script ---- -->
+            <section class="pane off" data-tab="script" data-screen-label="Panneau Script">
+              <div class="pane-head">
+                <div class="eyebrow-row">
+                  <div class="eyebrow">Script</div>
+                  <div class="pane-min" title="Réduire le panneau">−</div>
+                </div>
+                <div class="fx ac jb gap12" style="margin-top: 4px">
+                  <h1 class="h1">Chronologie</h1>
+                  <div class="fx ac gap8">
+                    <span class="ghost">Annuler</span>
+                    <span class="ghost">Comparer</span>
+                    <span class="ghost">Versions</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="pane-scroll">
+                <section>
+                  <div class="act-head">
+                    <span class="act-num">I</span>
+                    <span class="sec-title">Le départ</span>
+                    <span class="hint">2 tuiles · 30 s</span>
+                    <div class="spacer"></div>
+                    <span class="ghost" data-rename=".sec-title">Renommer</span>
+                  </div>
+                  <div class="tiles">
+                    <article class="tile">
+                      <div class="tile-head">
+                        <span class="seq-num">01</span>
+                        <span class="tile-title" data-field="title">Le port de cendres</span>
+                        <div class="spacer"></div>
+                        <span class="hint">12 s</span>
+                        <span class="row-x" title="Supprimer">✕</span>
+                      </div>
+                      <p class="tile-body" data-field="body"><a class="ent ent-perso" data-ent="perso" data-ent-id="elara">Elara</a> quitte le quai avant l'aube. <a class="ent ent-decor" data-ent="decor" data-ent-id="port">Le port de cendres</a> est encore couvert de suie ; personne ne la regarde partir.</p>
+                    </article>
+                    <article class="tile">
+                      <div class="tile-head">
+                        <span class="seq-num">02</span>
+                        <span class="tile-title" data-field="title">La carte céleste</span>
+                        <div class="spacer"></div>
+                        <span class="hint">18 s</span>
+                        <span class="row-x" title="Supprimer">✕</span>
+                      </div>
+                      <p class="tile-body" data-field="body"><a class="ent ent-perso" data-ent="perso" data-ent-id="naim">Naïm</a> déplie la carte sur le pont. Les étoiles y sont peintes une à une, et la dernière tremble déjà.</p>
+                    </article>
+                    <div class="tile-add">＋ Ajouter une tuile</div>
+                  </div>
+                </section>
+
+                <section>
+                  <div class="act-head">
+                    <span class="act-num">II</span>
+                    <span class="sec-title">La traversée</span>
+                    <span class="hint">2 tuiles · 38 s</span>
+                    <div class="spacer"></div>
+                    <span class="ghost" data-rename=".sec-title">Renommer</span>
+                  </div>
+                  <div class="tiles">
+                    <article class="tile">
+                      <div class="tile-head">
+                        <span class="seq-num">03</span>
+                        <span class="tile-title" data-field="title">Le détroit</span>
+                        <div class="spacer"></div>
+                        <span class="pill pill-wait">Révision proposée</span>
+                        <span class="hint">22 s</span>
+                        <span class="row-x" title="Supprimer">✕</span>
+                      </div>
+                      <p class="tile-body" data-field="body"><a class="ent ent-perso" data-ent="perso" data-ent-id="elara">Elara</a> replie la voile pendant que le courant s'inverse. Les récifs apparaissent sous la coque, alignés comme des colonnes. La dernière étoile de la carte s'efface.</p>
+                      <div class="note">Note — silence complet jusqu'au plan des récifs. Le son revient quand la carte s'efface.</div>
+                    </article>
+                    <article class="tile">
+                      <div class="tile-head">
+                        <span class="seq-num">04</span>
+                        <span class="tile-title" data-field="title">Le temple englouti</span>
+                        <div class="spacer"></div>
+                        <span class="hint">16 s</span>
+                        <span class="row-x" title="Supprimer">✕</span>
+                      </div>
+                      <p class="tile-body" data-field="body"><a class="ent ent-decor" data-ent="decor" data-ent-id="temple">Le temple englouti</a> apparaît par sa nef. <a class="ent ent-perso" data-ent="perso" data-ent-id="passeuse">La passeuse</a> attend en haut de l'escalier, immobile depuis longtemps.</p>
+                    </article>
+                    <div class="tile-add">＋ Ajouter une tuile</div>
+                  </div>
+                </section>
+
+                <section>
+                  <div class="act-head">
+                    <span class="act-num">III</span>
+                    <span class="sec-title">L'effacement</span>
+                    <span class="hint">1 tuile · 14 s</span>
+                    <div class="spacer"></div>
+                    <span class="ghost" data-rename=".sec-title">Renommer</span>
+                  </div>
+                  <div class="tiles">
+                    <article class="tile">
+                      <div class="tile-head">
+                        <span class="seq-num">05</span>
+                        <span class="tile-title" data-field="title">Retour sans carte</span>
+                        <div class="spacer"></div>
+                        <span class="pill pill-wait">Brouillon</span>
+                        <span class="hint">14 s</span>
+                        <span class="row-x" title="Supprimer">✕</span>
+                      </div>
+                      <p class="tile-body" data-field="body"><a class="ent ent-perso" data-ent="perso" data-ent-id="elara">Elara</a> rentre par le même quai. Elle connaît la route sans rien avoir à lire.</p>
+                    </article>
+                    <div class="tile-add">＋ Ajouter une tuile</div>
+                  </div>
+                </section>
+              </div>
+
+              <div class="pane-foot">
+                <svg class="ico-s" viewBox="0 0 24 24" style="color: #7fd6a8"><polyline points="5 12.5 10 17 19 7"></polyline></svg>
+                <span>Enregistré automatiquement · 5 tuiles · 82 s</span>
+                <div class="spacer"></div>
+                <a href="#historique">Voir l'historique</a>
+              </div>
+            </section>
+
+            <!-- ---- production ---- -->
+            <section class="pane off" data-tab="production" data-screen-label="Panneau Production">
+              <div class="pane-head">
+                <div class="eyebrow-row">
+                  <div class="eyebrow">Production</div>
+                  <div class="pane-min" title="Réduire le panneau">−</div>
+                </div>
+                <div class="fx ac jb gap12" style="margin-top: 4px">
+                  <h1 class="h1">Plans</h1>
+                  <div class="fx ac gap8">
+                    <span class="ghost">Veo · 1080p</span>
+                    <span class="ghost">Tout relancer</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="pane-scroll">
+                <section>
+                  <div class="sec-head">
+                    <span class="sec-title">Séquence 03 · Le détroit</span>
+                    <div class="spacer"></div>
+                    <span class="hint">3 plans · 22 s</span>
+                  </div>
+                  <div class="plans">
+                    <div class="plan">
+                      <div class="frame"><span>plan 03.1</span></div>
+                      <div class="fx ac jb gap8">
+                        <span class="pill pill-ok">Généré</span>
+                        <span class="hint">7 s</span>
+                      <span class="row-x" title="Supprimer">✕</span>
+                      </div>
+                    </div>
+                    <div class="plan">
+                      <div class="frame"><span>plan 03.2 · var. B</span></div>
+                      <div class="fx ac jb gap8">
+                        <span class="pill pill-ok">Généré</span>
+                        <span class="hint">2 variantes</span>
+                      </div>
+                    </div>
+                    <div class="plan">
+                      <div class="frame"><span>plan 03.3</span></div>
+                      <div class="fx ac jb gap8">
+                        <span class="pill pill-wait">En attente</span>
+                        <span class="hint">6 s</span>
+                      <span class="row-x" title="Supprimer">✕</span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <div class="sec-head">
+                    <span class="sec-title">Séquence 04 · Le temple englouti</span>
+                    <div class="spacer"></div>
+                    <span class="hint">2 plans · 16 s</span>
+                  </div>
+                  <div class="plans">
+                    <div class="plan">
+                      <div class="frame"><span>plan 04.1</span></div>
+                      <div class="fx ac jb gap8">
+                        <span class="pill pill-ok">Généré</span>
+                        <span class="hint">9 s</span>
+                      <span class="row-x" title="Supprimer">✕</span>
+                      </div>
+                    </div>
+                    <div class="plan">
+                      <div class="frame"><span>plan 04.2</span></div>
+                      <div class="fx ac jb gap8">
+                        <span class="pill">À cadrer</span>
+                        <span class="hint">7 s</span>
+                      <span class="row-x" title="Supprimer">✕</span>
+                      </div>
+                    </div>
+                    <div class="frame-add" style="height: auto">
+                      <svg class="ico-s" viewBox="0 0 24 24">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                      <span>Nouveau plan</span>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <div class="sec-head">
+                    <span class="sec-title">Montage</span>
+                    <div class="spacer"></div>
+                    <span class="hint">82 s assemblés sur 82 s</span>
+                  </div>
+                  <div class="card fx col gap10">
+                    <div class="strip">
+                      <i style="flex: 12"></i>
+                      <i style="flex: 18"></i>
+                      <i style="flex: 7; background: linear-gradient(180deg, var(--cobalt-hi), var(--cobalt)); border-color: rgba(255,255,255,.18)"></i>
+                      <i style="flex: 9"></i>
+                      <i style="flex: 6; border-style: dashed"></i>
+                      <i style="flex: 16"></i>
+                      <i style="flex: 14"></i>
+                    </div>
+                    <span class="hint">Le plan sélectionné (03.2) est isolé sur la frise. Les segments en pointillés attendent une génération.</span>
+                  </div>
+                </section>
+              </div>
+
+              <div class="pane-foot">
+                <svg class="ico-s" viewBox="0 0 24 24" style="color: #7fd6a8"><polyline points="5 12.5 10 17 19 7"></polyline></svg>
+                <span>Enregistré automatiquement · 1 génération en file</span>
+                <div class="spacer"></div>
+                <a href="#historique">Voir l'historique</a>
+              </div>
+            </section>
+
+            <!-- ---- personnages ---- -->
+            <section class="pane off" data-tab="personnages" data-screen-label="Panneau Personnages">
+              <div class="pane-head">
+                <div class="eyebrow-row">
+                  <div class="eyebrow">Personnages</div>
+                  <div class="pane-min" title="Réduire le panneau">−</div>
+                </div>
+                <div class="fx ac jb gap12" style="margin-top: 4px">
+                  <h1 class="h1">Elara</h1>
+                  <span class="badge">Identité canonique · ELA-01</span>
+                </div>
+              </div>
+
+              <div class="pane-scroll">
+                <div class="folders">
+                  <div class="tree">
+                    <div class="node on">
+                      <svg class="ico-s" viewBox="0 0 24 24"><path d="M4 7h5l2 2.5h9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"></path></svg>
+                      <span>Elara</span>
+                    </div>
+                    <div class="node sub on">Base</div>
+                    <div class="node sub">Tenues</div>
+                    <div class="node sub">Blessée</div>
+                    <div class="node sub">Fin du voyage</div>
+                    <div class="node">
+                      <svg class="ico-s" viewBox="0 0 24 24"><path d="M4 7h5l2 2.5h9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"></path></svg>
+                      <span>Naïm</span>
+                    </div>
+                    <div class="node">
+                      <svg class="ico-s" viewBox="0 0 24 24"><path d="M4 7h5l2 2.5h9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"></path></svg>
+                      <span>La passeuse</span>
+                    </div>
+                    <div class="node node-add">＋ Nouveau dossier</div>
+                  </div>
+
+                  <div class="fx col gap12">
+                    <div class="fx ac gap8">
+                      <span class="sec-title">Elara · Base</span>
+                      <div class="spacer"></div>
+                      <span class="ghost">Ajouter une image</span>
+                    </div>
+                    <div class="assets">
+                      <div class="frame"><span>face</span><span class="frame-x">✕</span></div>
+                      <div class="frame"><span>profil</span><span class="frame-x">✕</span></div>
+                      <div class="frame"><span>plein pied</span><span class="frame-x">✕</span></div>
+                    </div>
+                    <div class="card fx col gap8">
+                      <span class="hint">Les états héritent de Base</span>
+                      <p class="prose" style="font-size: 12.5px; color: var(--ink-2)">
+                        Blessée et Fin du voyage reprennent le visage, la carnation et la silhouette
+                        de Base. Seuls les éléments modifiés (tissu, plaie, cheveux) sont régénérés.
+                      </p>
+                      <div class="fx ac gap8">
+                        <span class="chip">Cheveux tressés<span class="chip-x">✕</span></span>
+                        <span class="chip">Manteau de toile<span class="chip-x">✕</span></span>
+                        <span class="chip chip-add">＋ Trait d'identité</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label class="field-label">États liés</label>
+                      <div class="fx ac gap8">
+                        <span class="pill pill-ok">Base · 3 images</span>
+                        <span class="pill">Tenues · 4</span>
+                        <span class="pill">Blessée · 2</span>
+                        <span class="pill pill-wait">Fin du voyage · vide</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="pane-foot">
+                <svg class="ico-s" viewBox="0 0 24 24" style="color: #7fd6a8"><polyline points="5 12.5 10 17 19 7"></polyline></svg>
+                <span>Enregistré automatiquement · 3 personnages</span>
+                <div class="spacer"></div>
+                <a href="#historique">Voir l'historique</a>
+              </div>
+            </section>
+
+            <!-- ---- décors ---- -->
+            <section class="pane off" data-tab="decors" data-screen-label="Panneau Décors">
+              <div class="pane-head">
+                <div class="eyebrow-row">
+                  <div class="eyebrow">Décors</div>
+                  <div class="pane-min" title="Réduire le panneau">−</div>
+                </div>
+                <div class="fx ac jb gap12" style="margin-top: 4px">
+                  <h1 class="h1">Temple englouti</h1>
+                  <span class="badge">Identité canonique · DEC-04</span>
+                </div>
+              </div>
+
+              <div class="pane-scroll">
+                <div class="folders">
+                  <div class="tree">
+                    <div class="node on">
+                      <svg class="ico-s" viewBox="0 0 24 24"><path d="M4 7h5l2 2.5h9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"></path></svg>
+                      <span>Temple englouti</span>
+                    </div>
+                    <div class="node sub">Base</div>
+                    <div class="node sub">Jour</div>
+                    <div class="node sub on">Nuit</div>
+                    <div class="node sub">Détruit</div>
+                    <div class="node">
+                      <svg class="ico-s" viewBox="0 0 24 24"><path d="M4 7h5l2 2.5h9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"></path></svg>
+                      <span>Port de cendres</span>
+                    </div>
+                    <div class="node">
+                      <svg class="ico-s" viewBox="0 0 24 24"><path d="M4 7h5l2 2.5h9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"></path></svg>
+                      <span>Le détroit</span>
+                    </div>
+                    <div class="node node-add">＋ Nouveau dossier</div>
+                  </div>
+
+                  <div class="fx col gap12">
+                    <div class="fx ac gap8">
+                      <span class="sec-title">Temple englouti · Nuit</span>
+                      <div class="spacer"></div>
+                      <span class="ghost">Ajouter une image</span>
+                    </div>
+                    <div class="assets">
+                      <div class="frame"><span>nef</span><span class="frame-x">✕</span></div>
+                      <div class="frame"><span>escalier</span><span class="frame-x">✕</span></div>
+                      <div class="frame-add">
+                        <svg class="ico-s" viewBox="0 0 24 24">
+                          <line x1="12" y1="5" x2="12" y2="19"></line>
+                          <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        <span>Référence</span>
+                      </div>
+                    </div>
+                    <div class="card fx col gap8">
+                      <span class="hint">Hérite de Base</span>
+                      <p class="prose" style="font-size: 12.5px; color: var(--ink-2)">
+                        Architecture, échelle et matières viennent de Base. L'état Nuit ne modifie que
+                        l'éclairage et la présence de l'eau.
+                      </p>
+                      <div class="grid2">
+                        <div>
+                          <label class="field-label">Éclairage</label>
+                          <div class="ctl">
+                            <span>Lune basse, contre-jour</span>
+                            <svg class="ico-s" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                          </div>
+                        </div>
+                        <div>
+                          <label class="field-label">Niveau d'eau</label>
+                          <div class="ctl">
+                            <span>Haut</span>
+                            <span class="stepper">
+                              <svg class="ico-s" viewBox="0 0 24 24" style="height: 11px"><polyline points="6 15 12 9 18 15"></polyline></svg>
+                              <svg class="ico-s" viewBox="0 0 24 24" style="height: 11px"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label class="field-label">Utilisé dans</label>
+                      <div class="fx ac gap8">
+                        <span class="pill">Séquence 04 · plan 04.1</span>
+                        <span class="pill">Séquence 04 · plan 04.2</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="pane-foot">
+                <svg class="ico-s" viewBox="0 0 24 24" style="color: #7fd6a8"><polyline points="5 12.5 10 17 19 7"></polyline></svg>
+                <span>Enregistré automatiquement · 3 décors · 9 états</span>
+                <div class="spacer"></div>
+                <a href="#historique">Voir l'historique</a>
+              </div>
+            </section>
+
+            <!-- ---- export ---- -->
+            <section class="pane off" data-tab="export" data-screen-label="Panneau Export">
+              <div class="pane-head">
+                <div class="eyebrow-row">
+                  <div class="eyebrow">Export</div>
+                  <div class="pane-min" title="Réduire le panneau">−</div>
+                </div>
+                <div class="fx ac jb gap12" style="margin-top: 4px">
+                  <h1 class="h1">Sortie finale</h1>
+                  <span class="ghost">Historique des exports</span>
+                </div>
+              </div>
+
+              <div class="pane-scroll">
+                <section>
+                  <div class="sec-head">
+                    <span class="sec-title">Montage</span>
+                    <div class="spacer"></div>
+                    <span class="hint">82 s · 5 tuiles</span>
+                  </div>
+                  <div class="card fx col gap10">
+                    <div class="strip">
+                      <i style="flex: 12"></i>
+                      <i style="flex: 18"></i>
+                      <i style="flex: 7"></i>
+                      <i style="flex: 9"></i>
+                      <i style="flex: 6; border-style: dashed"></i>
+                      <i style="flex: 16"></i>
+                      <i style="flex: 14"></i>
+                    </div>
+                    <span class="hint">Un segment en pointillés reste à générer (plan 03.3).</span>
+                  </div>
+                </section>
+
+                <section>
+                  <div class="sec-head">
+                    <span class="sec-title">Réglages de sortie</span>
+                  </div>
+                  <div class="grid2">
+                    <div>
+                      <label class="field-label">Conteneur</label>
+                      <div class="ctl">
+                        <span>MP4 · H.264</span>
+                        <svg class="ico-s" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                      </div>
+                    </div>
+                    <div>
+                      <label class="field-label">Résolution</label>
+                      <div class="ctl">
+                        <span>1080p</span>
+                        <svg class="ico-s" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                      </div>
+                    </div>
+                    <div>
+                      <label class="field-label">Images par seconde</label>
+                      <div class="ctl">
+                        <span>24 ips</span>
+                        <svg class="ico-s" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                      </div>
+                    </div>
+                    <div>
+                      <label class="field-label">Débit</label>
+                      <div class="ctl">
+                        <span>Élevé</span>
+                        <svg class="ico-s" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <div class="sec-head">
+                    <span class="sec-title">Livrables</span>
+                  </div>
+                  <div class="fx col gap6">
+                    <div class="prow">
+                      <span class="fx col" style="min-width: 0">
+                        <span class="prow-lab">Film monté</span>
+                        <span class="prow-val">odyssey_v3.mp4 · 82 s</span>
+                      </span>
+                      <span class="prow-acts">
+                        <span class="mini mini-cobalt">Exporter</span>
+                      </span>
+                    </div>
+                    <div class="prow">
+                      <span class="fx col" style="min-width: 0">
+                        <span class="prow-lab">Plans séparés</span>
+                        <span class="prow-val">7 fichiers · dossier compressé</span>
+                      </span>
+                      <span class="prow-acts">
+                        <span class="mini">Exporter</span>
+                      </span>
+                    </div>
+                    <div class="prow">
+                      <span class="fx col" style="min-width: 0">
+                        <span class="prow-lab">Script</span>
+                        <span class="prow-val">Chronologie complète · PDF</span>
+                      </span>
+                      <span class="prow-acts">
+                        <span class="mini">Exporter</span>
+                      </span>
+                    </div>
+                    <div class="prow">
+                      <span class="fx col" style="min-width: 0">
+                        <span class="prow-lab">Fiches</span>
+                        <span class="prow-val">Personnages et décors · PDF</span>
+                      </span>
+                      <span class="prow-acts">
+                        <span class="mini">Exporter</span>
+                      </span>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div class="pane-foot">
+                <svg class="ico-s" viewBox="0 0 24 24" style="color: #e6bd85"><circle cx="12" cy="12" r="8"></circle><polyline points="12 7.5 12 12 15 13.5"></polyline></svg>
+                <span>1 plan manquant avant export complet</span>
+                <div class="spacer"></div>
+                <a href="#historique">Voir l'historique</a>
+              </div>
+            </section>
+            </div>
+
+            <!-- ---- séparateur ---- -->
+            <div class="divider">
+              <div class="split-rail" id="split-handle" title="Glisser pour redimensionner"></div>
+              <span class="split-chevs" aria-hidden="true"><span>‹</span><span>›</span></span>
+              <button type="button" class="split-knob" id="split-left" title="Réduire / ouvrir le volet" aria-label="Réduire ou ouvrir le volet gauche">‹</button>
+            </div>
+
+            <!-- ---- conversation (droite) ---- -->
+            <section class="pane" data-screen-label="Conversation de production">
+              <div class="pane-head fx ac jb gap12">
+                <div>
+                  <div class="eyebrow">Assistant</div>
+                  <div class="fx ac gap10" style="margin-top: 4px">
+                    <span style="font: 700 16px Manrope, sans-serif">Conversation de production</span>
+                    <span class="hint">Toujours ouverte</span>
+                  </div>
+                </div>
+                <div class="btn btn-icon">
+                  <svg class="ico" viewBox="0 0 24 24">
+                    <circle cx="12" cy="5.5" r="1.4"></circle>
+                    <circle cx="12" cy="12" r="1.4"></circle>
+                    <circle cx="12" cy="18.5" r="1.4"></circle>
+                  </svg>
+                </div>
+              </div>
+
+              <div class="thread" data-thread="projet">
+                <div class="msg" style="justify-content: flex-end">
+                  <div class="bubble" style="max-width: 78%">
+                    Aide-moi à préciser le style visuel d'Odyssey sans toucher au script.
+                  </div>
+                  <span class="av">F</span>
+                </div>
+
+                <div class="msg">
+                  <span class="av av-ai">✦</span>
+                  <div class="fx col gap12" style="min-width: 0">
+                    <p class="prose">Voici une direction visuelle concise, fidèle à ton intention.</p>
+                    <div class="proposal">
+                      <div class="fx ac gap8">
+                        <span class="sec-title">Direction visuelle proposée</span>
+                        <div class="spacer"></div>
+                        <span class="hint">3 plans</span>
+                      </div>
+                      <p class="prose" style="font-size: 13px; color: var(--ink-2)">
+                        Réaliste cinématique, lumière naturelle et atmosphérique. Épopée maritime intime
+                        et archéologie submergée : or patiné, gris de mer et mauves de crépuscule.
+                      </p>
+                      <div class="proposal-frames">
+                        <div class="frame"><span>plan 01 · navigatrice</span></div>
+                        <div class="frame"><span>plan 02 · ruines</span></div>
+                        <div class="frame"><span>plan 03 · astrolabe</span></div>
+                      </div>
+                      <div class="fx col gap6">
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Style visuel</span>
+                            <span class="prow-val">Réaliste cinématique → Réaliste, lumière naturelle</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini mini-cobalt" data-act="apply">Appliquer</span>
+                            <span class="mini" data-act="ignore">Ignorer</span>
+                          </span>
+                        </div>
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Palette</span>
+                            <span class="prow-val">+ mauve de crépuscule, − ocre chaud</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini mini-cobalt" data-act="apply">Appliquer</span>
+                            <span class="mini" data-act="ignore">Ignorer</span>
+                          </span>
+                        </div>
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Ton</span>
+                            <span class="prow-val">+ contemplatif</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini mini-cobalt" data-act="apply">Appliquer</span>
+                            <span class="mini" data-act="ignore">Ignorer</span>
+                          </span>
+                        </div>
+                      </div>
+                      <span class="hint">Chaque champ s'applique séparément. Rien n'est écrit sans votre accord.</span>
+                      <div class="fx ac gap8" style="margin-top: 2px"><span class="ghost" data-goto="projet">Voir dans Projet</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="thread off" data-thread="script">
+                <div class="msg" style="justify-content: flex-end">
+                  <div class="bubble" style="max-width: 78%">
+                    La séquence 03 est trop longue. Propose une coupe sans toucher aux autres actes.
+                  </div>
+                  <span class="av">F</span>
+                </div>
+                <div class="msg">
+                  <span class="av av-ai">✦</span>
+                  <div class="fx col gap12" style="min-width: 0">
+                    <p class="prose">Trois modifications, limitées à la séquence 03.</p>
+                    <div class="proposal">
+                      <div class="fx ac gap8">
+                        <span class="sec-title">Séquence 03 · Le détroit</span>
+                        <div class="spacer"></div>
+                        <span class="hint">22 s → 17 s</span>
+                      </div>
+                      <div class="fx col gap6">
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Scène 03.2 · durée</span>
+                            <span class="prow-val">9 s → 6 s</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini mini-cobalt" data-act="apply">Appliquer</span>
+                            <span class="mini" data-act="ignore">Ignorer</span>
+                          </span>
+                        </div>
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Scène 03.3 · texte</span>
+                            <span class="prow-val">« La dernière étoile s'efface. »</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini mini-cobalt" data-act="apply">Appliquer</span>
+                            <span class="mini" data-act="ignore">Ignorer</span>
+                          </span>
+                        </div>
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Ordre</span>
+                            <span class="prow-val">03.3 avant 03.2</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini mini-cobalt" data-act="apply">Appliquer</span>
+                            <span class="mini" data-act="ignore">Ignorer</span>
+                          </span>
+                        </div>
+                      </div>
+                      <div class="fx ac gap8">
+                        <span class="btn" style="height: 32px; font-size: 12px">Comparer avant / après</span>
+                        <span class="hint">Les actes I et III ne sont pas touchés.</span>
+                      </div>
+                      <div class="fx ac gap8" style="margin-top: 2px"><span class="ghost" data-goto="script">Voir dans Script</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="thread off" data-thread="production">
+                <div class="msg" style="justify-content: flex-end">
+                  <div class="bubble" style="max-width: 78%">
+                    Le plan 03.3 n'est pas encore généré. Que proposes-tu ?
+                  </div>
+                  <span class="av">F</span>
+                </div>
+                <div class="msg">
+                  <span class="av av-ai">✦</span>
+                  <div class="fx col gap12" style="min-width: 0">
+                    <p class="prose">Le cadrage manque. Voici deux réglages à valider avant la génération.</p>
+                    <div class="proposal">
+                      <div class="proposal-frames">
+                        <div class="frame"><span>03.3 · var. A</span></div>
+                        <div class="frame"><span>03.3 · var. B</span></div>
+                        <div class="frame"><span>03.3 · var. C</span></div>
+                      </div>
+                      <div class="fx col gap6">
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Cadrage 03.3</span>
+                            <span class="prow-val">Gros plan sur la carte, variante B</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini mini-cobalt" data-act="apply">Appliquer</span>
+                            <span class="mini" data-act="ignore">Ignorer</span>
+                          </span>
+                        </div>
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Générateur du plan</span>
+                            <span class="prow-val">Veo → Omni (mouvement lent)</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini mini-cobalt" data-act="apply">Appliquer</span>
+                            <span class="mini" data-act="ignore">Ignorer</span>
+                          </span>
+                        </div>
+                      </div>
+                      <div class="fx ac gap8" style="margin-top: 2px"><span class="ghost" data-goto="production">Voir dans Production</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="thread off" data-thread="personnages">
+                <div class="msg" style="justify-content: flex-end">
+                  <div class="bubble" style="max-width: 78%">
+                    Crée l'état « Fin du voyage » d'Elara à partir de Base.
+                  </div>
+                  <span class="av">F</span>
+                </div>
+                <div class="msg">
+                  <span class="av av-ai">✦</span>
+                  <div class="fx col gap12" style="min-width: 0">
+                    <p class="prose">L'état héritera de ELA-01. Trois écarts à valider.</p>
+                    <div class="proposal">
+                      <div class="fx col gap6">
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Cheveux</span>
+                            <span class="prow-val">Tresse défaite, sel séché</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini mini-cobalt" data-act="apply">Appliquer</span>
+                            <span class="mini" data-act="ignore">Ignorer</span>
+                          </span>
+                        </div>
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Manteau</span>
+                            <span class="prow-val">Toile déchirée à l'épaule droite</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini mini-cobalt" data-act="apply">Appliquer</span>
+                            <span class="mini" data-act="ignore">Ignorer</span>
+                          </span>
+                        </div>
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Visage</span>
+                            <span class="prow-val">Inchangé — hérité de Base</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini" data-act="ignore">Verrouillé par l'identité</span>
+                          </span>
+                        </div>
+                      </div>
+                      <div class="fx ac gap8" style="margin-top: 2px"><span class="ghost" data-goto="personnages">Voir dans Personnages</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="thread off" data-thread="decors">
+                <div class="msg" style="justify-content: flex-end">
+                  <div class="bubble" style="max-width: 78%">
+                    L'état Nuit du temple manque de lisibilité.
+                  </div>
+                  <span class="av">F</span>
+                </div>
+                <div class="msg">
+                  <span class="av av-ai">✦</span>
+                  <div class="fx col gap12" style="min-width: 0">
+                    <p class="prose">
+                      L'architecture reste héritée de Base. Je ne modifie que l'éclairage et l'eau.
+                    </p>
+                    <div class="proposal">
+                      <div class="fx col gap6">
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Éclairage</span>
+                            <span class="prow-val">Lune basse → lune basse + reflets de surface</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini mini-cobalt" data-act="apply">Appliquer</span>
+                            <span class="mini" data-act="ignore">Ignorer</span>
+                          </span>
+                        </div>
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Niveau d'eau</span>
+                            <span class="prow-val">Haut → moyen</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini mini-cobalt" data-act="apply">Appliquer</span>
+                            <span class="mini" data-act="ignore">Ignorer</span>
+                          </span>
+                        </div>
+                      </div>
+                      <span class="hint">Les plans 04.1 et 04.2 devront être relancés après validation.</span>
+                      <div class="fx ac gap8" style="margin-top: 2px"><span class="ghost" data-goto="decors">Voir dans Décors</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="thread off" data-thread="export">
+                <div class="msg" style="justify-content: flex-end">
+                  <div class="bubble" style="max-width: 78%">
+                    Je veux exporter le film. Qu'est-ce qui bloque ?
+                  </div>
+                  <span class="av">F</span>
+                </div>
+                <div class="msg">
+                  <span class="av av-ai">✦</span>
+                  <div class="fx col gap12" style="min-width: 0">
+                    <p class="prose">
+                      Le plan 03.3 n'est pas généré : 6 s manquent sur 82. Deux réglages de sortie
+                      à valider en attendant.
+                    </p>
+                    <div class="proposal">
+                      <div class="fx col gap6">
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Conteneur</span>
+                            <span class="prow-val">MP4 · H.264 → MOV · ProRes</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini mini-cobalt" data-act="apply">Appliquer</span>
+                            <span class="mini" data-act="ignore">Ignorer</span>
+                          </span>
+                        </div>
+                        <div class="prow">
+                          <span class="fx col" style="min-width: 0">
+                            <span class="prow-lab">Résolution</span>
+                            <span class="prow-val">1080p → 1440p</span>
+                          </span>
+                          <span class="prow-acts">
+                            <span class="mini mini-cobalt" data-act="apply">Appliquer</span>
+                            <span class="mini" data-act="ignore">Ignorer</span>
+                          </span>
+                        </div>
+                      </div>
+                      <div class="fx ac gap8" style="margin-top: 2px">
+                        <span class="ghost" data-goto="production">Voir le plan manquant</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="composer-wrap" id="ctx-wrap">
+                <div class="ctx">
+                  <span class="ctx-check">
+                    <svg class="ico-s" viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke-width: 2.6"><polyline points="5 12.5 10 17 19 7"></polyline></svg>
+                  </span>
+                  <span>Contexte joint : <span class="ctx-strong">Projet · Style visuel</span></span>
+                  <div class="spacer"></div>
+                  <span class="ghost" id="ctx-toggle">Détacher</span>
+                </div>
+                <div class="composer">
+                  <div class="composer-input empty" id="composer-input" contenteditable="true">Décrivez ce que vous voulez créer ou modifier…</div>
+                  <div class="composer-actions">
+                    <span class="round">
+                      <svg class="ico-s" viewBox="0 0 24 24">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                    </span>
+                    <span class="round">
+                      <svg class="ico-s" viewBox="0 0 24 24">
+                        <line x1="4" y1="8" x2="20" y2="8"></line>
+                        <line x1="4" y1="16" x2="20" y2="16"></line>
+                        <circle cx="9" cy="8" r="2.2"></circle>
+                        <circle cx="15" cy="16" r="2.2"></circle>
+                      </svg>
+                    </span>
+                    <div class="spacer"></div>
+                    <span class="hint">Odyssey · contexte à jour</span>
+                    <span class="send">
+                      <svg class="ico" viewBox="0 0 24 24" style="fill: currentColor; stroke: none">
+                        <polygon points="5 4 20 12 5 20 8 12"></polygon>
+                      </svg>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </main>
+        </div>
+      </div>
+    </x-dc>
+    <script
+      type="text/x-dc"
+      data-dc-script
+     data-props="{&quot;$preview&quot;: {&quot;width&quot;: &quot;100%&quot;, &quot;height&quot;: &quot;100%&quot;}}">
+      class Component extends DCLogic {
+        componentDidMount() {
+          var root = document.getElementById("odyssey-split");
+          if (!root) return;
+          var readout = document.getElementById("split-readout");
+          var MIN = 22, MAX = 78;
+          var set = function (v, free) {
+            var p = Math.max(0, Math.min(100, v));
+            if (!free) p = p === 0 || p === 100 ? p : Math.max(MIN, Math.min(MAX, p));
+            root.style.setProperty("--split", String(p));
+            var cb = document.getElementById("split-left");
+            if (cb) cb.classList.toggle("is-collapsed", p === 0);
+            if (readout) readout.textContent = Math.round(p) + " / " + Math.round(100 - p);
+          };
+          var drag = function (v) {
+            if (v < MIN - 6) return set(0);
+            if (v > MAX + 6) return set(100);
+            set(Math.max(MIN, Math.min(MAX, v)));
+          };
+          var cur = function () {
+            var v = parseFloat(getComputedStyle(root).getPropertyValue("--split"));
+            return isNaN(v) ? 50 : v;
+          };
+          set(50);
+
+          var dragging = false;
+          var handle = document.getElementById("split-handle");
+          if (handle) {
+            handle.addEventListener("pointerdown", function (e) {
+              dragging = true;
+              document.body.style.cursor = "col-resize";
+              e.preventDefault();
+            });
+          }
+          window.addEventListener("pointermove", function (e) {
+            if (!dragging) return;
+            var r = root.getBoundingClientRect();
+            drag(((e.clientX - r.left) / r.width) * 100);
+          });
+          window.addEventListener("pointerup", function () {
+            dragging = false;
+            document.body.style.cursor = "";
+          });
+
+          var left = document.getElementById("split-left");
+          var right = document.getElementById("split-right");
+          if (left) left.addEventListener("click", function () { set(cur() === 0 ? 50 : 0); });
+          if (right) right.addEventListener("click", function () { set(cur() === 100 ? 50 : 100); });
+
+          if (handle) {
+            handle.addEventListener("dblclick", function () { set(50); });
+          }
+
+          var ctxLabels = {
+            projet: "Projet · Style visuel",
+            script: "Script → Acte II → Séquence 03 · Le détroit",
+            production: "Production → Séquence 03 → Plan 03.3",
+            personnages: "Personnages → Elara → Base",
+            decors: "Décors → Temple englouti → Nuit",
+            export: "Export · Sortie finale"
+          };
+          var rail = [].slice.call(document.querySelectorAll(".rail-item[data-tab]"));
+          var panes = [].slice.call(document.querySelectorAll(".pane[data-tab]"));
+          var threads = [].slice.call(document.querySelectorAll("[data-thread]"));
+          var ctxStrong = document.querySelector(".ctx-strong");
+          var activate = function (tab) {
+            rail.forEach(function (el) { el.classList.toggle("on", el.getAttribute("data-tab") === tab); });
+            panes.forEach(function (p) { p.classList.toggle("off", p.getAttribute("data-tab") !== tab); });
+            threads.forEach(function (t) { t.classList.toggle("off", t.getAttribute("data-thread") !== tab); });
+            if (ctxStrong) ctxStrong.textContent = ctxLabels[tab] || tab;
+          };
+          this.activate = activate;
+          this.openPane = function () { if (cur() === 0) set(50); };
+          var self = this;
+          rail.forEach(function (el) {
+            el.addEventListener("click", function () {
+              activate(el.getAttribute("data-tab"));
+              self.openPane();
+            });
+          });
+          activate("projet");
+
+          document.addEventListener("click", function (e) {
+            var m = e.target.closest ? e.target.closest(".pane-min") : null;
+            if (m) { set(0); return; }
+            var go = e.target.closest ? e.target.closest("[data-goto]") : null;
+            if (go) {
+              activate(go.getAttribute("data-goto"));
+              self.openPane();
+            }
+          });
+
+          [].slice.call(document.querySelectorAll(".prow")).forEach(function (row) {
+            var acts = row.querySelector(".prow-acts");
+            if (!acts) return;
+            acts.addEventListener("click", function (e) {
+              var t = e.target.closest ? e.target.closest("[data-act]") : null;
+              if (!t) return;
+              var applied = t.getAttribute("data-act") === "apply";
+              acts.textContent = applied ? "Appliqué" : "Ignoré";
+              acts.setAttribute(
+                "style",
+                "font:700 11px Manrope,sans-serif;color:" + (applied ? "#7fd6a8" : "#6d7994")
+              );
+              row.style.opacity = applied ? "1" : "0.55";
+            });
+          });
+
+          var collapse = document.getElementById("pane-collapse");
+          if (collapse) {
+            collapse.addEventListener("click", function () { set(cur() === 0 ? 50 : 0); });
+          }
+
+          this.wireInteractions();
+
+          var wrap = document.getElementById("ctx-wrap");
+          var toggle = document.getElementById("ctx-toggle");
+          if (wrap && toggle) {
+            toggle.addEventListener("click", function () {
+              var on = wrap.classList.toggle("detached");
+              toggle.textContent = on ? "Rattacher" : "Détacher";
+            });
+          }
+        }
+        wireInteractions() {
+          var self = this;
+          var OPTIONS = {
+            "Format": ["16:9 — paysage", "9:16 — vertical", "1:1 — carré", "2.39:1 — cinéma", "Personnalisé"],
+            "Résolution": ["720p", "1080p", "1440p", "4K"],
+            "Générateur": ["Veo", "Omni", "Runway", "Kling"],
+            "Éclairage": ["Lune basse, contre-jour", "Lune haute, diffuse", "Torches", "Aube froide"],
+            "Niveau d'eau": ["Bas", "Moyen", "Haut"],
+            "Style visuel": ["Réaliste cinématique", "Illustration", "Cartoon", "Anime", "3D", "Personnalisé"]
+          };
+          var openMenu = null;
+          var closeMenu = function () {
+            if (openMenu && openMenu.parentNode) openMenu.parentNode.removeChild(openMenu);
+            openMenu = null;
+          };
+          document.addEventListener("click", function (e) {
+            if (openMenu && !openMenu.contains(e.target)) closeMenu();
+          });
+
+          var labelFor = function (ctl) {
+            var wrap = ctl.parentNode;
+            var lab = wrap && wrap.querySelector ? wrap.querySelector(".field-label") : null;
+            if (lab) return lab.textContent.trim();
+            var sec = ctl.closest ? ctl.closest("section") : null;
+            var t = sec ? sec.querySelector(".sec-title") : null;
+            return t ? t.textContent.trim() : "";
+          };
+
+          document.addEventListener("click", function (e) {
+            var ctl = e.target.closest ? e.target.closest(".ctl") : null;
+            if (!ctl) return;
+            var span = ctl.querySelector("span");
+            var stepper = e.target.closest ? e.target.closest(".stepper") : null;
+            if (stepper) {
+              var svgs = [].slice.call(stepper.querySelectorAll("svg"));
+              var up = e.target.closest("svg") === svgs[0];
+              var m = /(-?\d+)/.exec(span.textContent);
+              if (m) {
+                var n = parseInt(m[1], 10) + (up ? 5 : -5);
+                if (n < 5) n = 5;
+                span.textContent = span.textContent.replace(m[1], String(n));
+              }
+              return;
+            }
+            var list = OPTIONS[labelFor(ctl)];
+            if (!list) return;
+            closeMenu();
+            var r = ctl.getBoundingClientRect();
+            var menu = document.createElement("div");
+            menu.className = "menu";
+            menu.style.left = r.left + "px";
+            menu.style.top = r.bottom + 6 + "px";
+            menu.style.minWidth = r.width + "px";
+            list.forEach(function (opt) {
+              var it = document.createElement("div");
+              it.className = "menu-item" + (opt === span.textContent.trim() ? " on" : "");
+              it.textContent = opt;
+              it.addEventListener("click", function () {
+                span.textContent = opt;
+                closeMenu();
+              });
+              menu.appendChild(it);
+            });
+            document.body.appendChild(menu);
+            openMenu = menu;
+            e.stopPropagation();
+          });
+
+          document.addEventListener("click", function (e) {
+            var x = e.target.closest ? e.target.closest(".chip-x, .frame-x") : null;
+            if (x) {
+              var host = x.closest(".chip") || x.closest(".frame");
+              if (host && host.parentNode) host.parentNode.removeChild(host);
+              return;
+            }
+            var add = e.target.closest ? e.target.closest(".chip-add") : null;
+            if (add) {
+              var chip = document.createElement("span");
+              chip.className = "chip";
+              chip.innerHTML = '<span contenteditable="true"></span><span class="chip-x">✕</span>';
+              add.parentNode.insertBefore(chip, add);
+              chip.querySelector("[contenteditable]").focus();
+              return;
+            }
+            var node = e.target.closest ? e.target.closest(".node") : null;
+            if (node && node.parentNode.classList.contains("tree")) {
+              var isSub = node.classList.contains("sub");
+              [].slice.call(node.parentNode.children).forEach(function (n) {
+                if (n.classList.contains("sub") === isSub) n.classList.remove("on");
+              });
+              node.classList.add("on");
+              var pane = node.closest(".pane");
+              var root = pane.querySelector(".tree .node:not(.sub).on") || pane.querySelector(".tree .node:not(.sub)");
+              var state = pane.querySelector(".tree .node.sub.on");
+              var title = pane.querySelector(".folders .sec-title");
+              if (title && root) {
+                title.textContent = root.textContent.trim() + (state ? " · " + state.textContent.trim() : "");
+              }
+              var h1 = pane.querySelector(".h1");
+              if (h1 && root) h1.textContent = root.textContent.trim();
+              return;
+            }
+            var seq = e.target.closest ? e.target.closest(".seq") : null;
+            if (seq && !seq.classList.contains("open")) seq.classList.toggle("selected");
+          });
+
+          [].slice.call(document.querySelectorAll(".sw")).forEach(function (sw) {
+            sw.addEventListener("click", function () {
+              var input = document.createElement("input");
+              input.type = "color";
+              input.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+              document.body.appendChild(input);
+              input.addEventListener("input", function () { sw.style.background = input.value; });
+              input.addEventListener("change", function () { document.body.removeChild(input); });
+              input.click();
+            });
+          });
+
+          var dragged = null;
+          [].slice.call(document.querySelectorAll(".seq")).forEach(function (s) {
+            if (s.querySelector(".seq-dots") === null) return;
+            s.setAttribute("draggable", "true");
+            s.addEventListener("dragstart", function () { dragged = s; s.classList.add("dragging"); });
+            s.addEventListener("dragend", function () {
+              s.classList.remove("dragging");
+              dragged = null;
+              [].slice.call(document.querySelectorAll(".seq")).forEach(function (o) { o.classList.remove("dropzone"); });
+            });
+            s.addEventListener("dragover", function (e) {
+              if (!dragged || dragged === s || dragged.parentNode !== s.parentNode) return;
+              e.preventDefault();
+              s.classList.add("dropzone");
+            });
+            s.addEventListener("dragleave", function () { s.classList.remove("dropzone"); });
+            s.addEventListener("drop", function (e) {
+              if (!dragged || dragged === s || dragged.parentNode !== s.parentNode) return;
+              e.preventDefault();
+              var kids = [].slice.call(s.parentNode.children);
+              s.parentNode.insertBefore(dragged, kids.indexOf(dragged) < kids.indexOf(s) ? s.nextSibling : s);
+              s.classList.remove("dropzone");
+            });
+          });
+
+          /* ----- CRUD ----- */
+          var edit = function (el) {
+            el.setAttribute("contenteditable", "true");
+            el.focus();
+            var r = document.createRange();
+            r.selectNodeContents(el);
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(r);
+            el.addEventListener("blur", function () { el.removeAttribute("contenteditable"); }, { once: true });
+            el.addEventListener("keydown", function (ev) {
+              if (ev.key === "Enter") { ev.preventDefault(); el.blur(); }
+            });
+          };
+
+          [].slice.call(document.querySelectorAll(".plan .frame")).forEach(function (f) {
+            if (!f.querySelector(".frame-x")) {
+              var x = document.createElement("span");
+              x.className = "frame-x";
+              x.textContent = "✕";
+              f.appendChild(x);
+            }
+          });
+
+          document.addEventListener("click", function (e) {
+            var t = e.target;
+            var seqAdd = t.closest ? t.closest(".seq-add") : null;
+            if (seqAdd) {
+              var n = seqAdd.parentNode.querySelectorAll(".seq:not(.seq-add)").length + 1;
+              var seq = document.createElement("div");
+              seq.className = "seq";
+              seq.innerHTML =
+                '<span class="seq-dots"><i></i><i></i><i></i><i></i><i></i><i></i></span>' +
+                '<span class="seq-num">' + (n < 10 ? "0" + n : n) + '</span>' +
+                '<span class="fx col"><span class="seq-title">Nouvelle séquence</span>' +
+                '<span class="hint">0 scène · 0 s</span></span>' +
+                '<div class="spacer"></div><span class="pill pill-wait">Brouillon</span>' +
+                '<span class="row-x" title="Supprimer">✕</span>';
+              seqAdd.parentNode.insertBefore(seq, seqAdd);
+              edit(seq.querySelector(".seq-title"));
+              return;
+            }
+            var sceneAdd = t.closest ? t.closest(".scene-add") : null;
+            if (sceneAdd) {
+              var sc = document.createElement("div");
+              sc.className = "scene";
+              var host = sceneAdd.parentNode;
+              var idx = host.querySelectorAll(".scene").length + 1;
+              var base = host.closest(".seq").querySelector(".seq-num").textContent.trim();
+              sc.innerHTML =
+                '<span class="seq-num">' + base + "." + idx + '</span>' +
+                '<span>Nouvelle scène</span><div class="spacer"></div>' +
+                '<span class="hint">0 s</span><span class="row-x" title="Supprimer">✕</span>';
+              host.insertBefore(sc, sceneAdd);
+              edit(sc.querySelector("span:nth-child(2)"));
+              return;
+            }
+            var nodeAdd = t.closest ? t.closest(".node-add") : null;
+            if (nodeAdd) {
+              var nd = document.createElement("div");
+              nd.className = "node";
+              nd.innerHTML =
+                '<svg class="ico-s" viewBox="0 0 24 24"><path d="M4 7h5l2 2.5h9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"></path></svg>' +
+                '<span>Nouveau dossier</span><div class="spacer"></div><span class="row-x" title="Supprimer">✕</span>';
+              nodeAdd.parentNode.insertBefore(nd, nodeAdd);
+              edit(nd.querySelector("span"));
+              return;
+            }
+            var frameAdd = t.closest ? t.closest(".frame-add") : null;
+            if (frameAdd) {
+              if (frameAdd.parentNode.classList.contains("plans")) {
+                var plan = document.createElement("div");
+                plan.className = "plan";
+                plan.innerHTML =
+                  '<div class="frame"><span>nouveau plan</span><span class="frame-x">✕</span></div>' +
+                  '<div class="fx ac jb gap8"><span class="pill">À cadrer</span><span class="hint">0 s</span></div>';
+                frameAdd.parentNode.insertBefore(plan, frameAdd);
+              } else {
+                var fr = document.createElement("div");
+                fr.className = "frame";
+                fr.innerHTML = '<span>nouvelle réf.</span><span class="frame-x">✕</span>';
+                frameAdd.parentNode.insertBefore(fr, frameAdd);
+              }
+              return;
+            }
+            var rx = t.closest ? t.closest(".row-x") : null;
+            if (rx) {
+              e.stopPropagation();
+              var row = rx.closest(".plan") || rx.closest(".seq") || rx.closest(".scene") || rx.closest(".node");
+              if (row && row.parentNode) row.parentNode.removeChild(row);
+              return;
+            }
+            var ren = t.closest ? t.closest("[data-rename]") : null;
+            if (ren) {
+              var scope = ren.closest("section") || ren.closest(".pane");
+              var target = scope.querySelector(ren.getAttribute("data-rename"));
+              if (target) edit(target);
+              return;
+            }
+            var sw = t.closest ? t.closest(".sw-add") : null;
+            if (sw) {
+              var c = document.createElement("span");
+              c.className = "sw";
+              c.style.background = "#8a8f98";
+              sw.parentNode.insertBefore(c, sw);
+              return;
+            }
+          });
+
+          document.addEventListener("contextmenu", function (e) {
+            var row = e.target.closest ? e.target.closest(".seq:not(.seq-add), .scene, .plan") : null;
+            if (!row) return;
+            e.preventDefault();
+            if (openMenu) closeMenu();
+            var menu = document.createElement("div");
+            menu.className = "menu";
+            menu.style.left = e.clientX + "px";
+            menu.style.top = e.clientY + "px";
+            [["Renommer", "rename"], ["Dupliquer", "dup"], ["Supprimer", "del"]].forEach(function (pair) {
+              var it = document.createElement("div");
+              it.className = "menu-item";
+              it.textContent = pair[0];
+              it.addEventListener("click", function () {
+                if (pair[1] === "del") row.parentNode.removeChild(row);
+                if (pair[1] === "dup") row.parentNode.insertBefore(row.cloneNode(true), row.nextSibling);
+                if (pair[1] === "rename") {
+                  var lab = row.querySelector(".seq-title") || row.querySelector("span:nth-child(2)");
+                  if (lab) edit(lab);
+                }
+                closeMenu();
+              });
+              menu.appendChild(it);
+            });
+            document.body.appendChild(menu);
+            openMenu = menu;
+          });
+
+          /* ----- tuiles ----- */
+          var ENTITIES = {
+            perso: {
+              elara: ["Elara", "Personnage · Base", "personnages"],
+              naim: ["Naïm", "Personnage · Base", "personnages"],
+              passeuse: ["La passeuse", "Personnage · Base", "personnages"]
+            },
+            decor: {
+              port: ["Port de cendres", "Décor · Base", "decors"],
+              temple: ["Temple englouti", "Décor · Nuit", "decors"],
+              detroit: ["Le détroit", "Décor · Base", "decors"]
+            }
+          };
+          var entCard = null;
+          var hideEnt = function () {
+            if (entCard && entCard.parentNode) entCard.parentNode.removeChild(entCard);
+            entCard = null;
+          };
+          document.addEventListener("mouseover", function (e) {
+            var a = e.target.closest ? e.target.closest(".ent") : null;
+            if (!a) return;
+            var kind = a.getAttribute("data-ent");
+            var meta = (ENTITIES[kind] || {})[a.getAttribute("data-ent-id")] || [a.textContent, kind, kind];
+            hideEnt();
+            var c = document.createElement("div");
+            c.className = "ent-card";
+            c.innerHTML = '<div class="frame"><span></span></div><b></b><i></i>';
+            c.querySelector(".frame span").textContent = meta[0].toLowerCase();
+            c.querySelector("b").textContent = meta[0];
+            c.querySelector("i").textContent = meta[1];
+            document.body.appendChild(c);
+            var r = a.getBoundingClientRect();
+            c.style.left = Math.min(r.left, window.innerWidth - 212) + "px";
+            var h = c.getBoundingClientRect().height;
+            c.style.top = (r.top - h - 8 < 8 ? r.bottom + 8 : r.top - h - 8) + "px";
+            entCard = c;
+            a.addEventListener("mouseleave", hideEnt, { once: true });
+          });
+          document.addEventListener("click", function (e) {
+            var a = e.target.closest ? e.target.closest(".ent") : null;
+            if (!a) return;
+            e.preventDefault();
+            hideEnt();
+            var kind = a.getAttribute("data-ent");
+            var meta = (ENTITIES[kind] || {})[a.getAttribute("data-ent-id")];
+            var tab = meta ? meta[2] : kind === "decor" ? "decors" : "personnages";
+            self.activate(tab);
+            self.openPane();
+            var pane = document.querySelector('.pane[data-tab="' + tab + '"]');
+            if (pane && meta) {
+              var nodes = [].slice.call(pane.querySelectorAll(".tree .node:not(.sub)"));
+              var hit = nodes.filter(function (n) {
+                return n.textContent.trim().toLowerCase() === meta[0].toLowerCase();
+              })[0];
+              if (hit) hit.click();
+            }
+          });
+
+          var addTile = function (host) {
+            var d = document.createElement("div");
+            d.className = "tile-draft";
+            d.innerHTML =
+              '<div class="d-title ph" contenteditable="true" data-ph="Titre de la tuile"></div>' +
+              '<div class="d-body ph" contenteditable="true" data-ph="Contenu…"></div>';
+            host.parentNode.insertBefore(d, host);
+            var t = d.querySelector(".d-title");
+            var b = d.querySelector(".d-body");
+            [t, b].forEach(function (f) {
+              f.textContent = f.getAttribute("data-ph");
+              f.addEventListener("focus", function () {
+                if (f.classList.contains("ph")) { f.textContent = ""; f.classList.remove("ph"); }
+              });
+              f.addEventListener("blur", function () {
+                if (!f.textContent.trim()) { f.textContent = f.getAttribute("data-ph"); f.classList.add("ph"); }
+              });
+            });
+            var commit = function () {
+              var title = t.classList.contains("ph") ? "" : t.textContent.trim();
+              var text = b.classList.contains("ph") ? "" : b.textContent.trim();
+              if (!title && !text) { d.parentNode.removeChild(d); return; }
+              var n = host.parentNode.querySelectorAll(".tile").length + 1;
+              var art = document.createElement("article");
+              art.className = "tile";
+              art.innerHTML =
+                '<div class="tile-head"><span class="seq-num"></span>' +
+                '<span class="tile-title" data-field="title"></span><div class="spacer"></div>' +
+                '<span class="pill pill-wait">Brouillon</span>' +
+                '<span class="row-x" title="Supprimer">✕</span></div>' +
+                '<p class="tile-body" data-field="body"></p>';
+              art.querySelector(".seq-num").textContent = n < 10 ? "0" + n : String(n);
+              art.querySelector(".tile-title").textContent = title || "Sans titre";
+              art.querySelector(".tile-body").textContent = text;
+              d.parentNode.insertBefore(art, d);
+              d.parentNode.removeChild(d);
+            };
+            t.addEventListener("keydown", function (ev) {
+              if (ev.key === "Enter") { ev.preventDefault(); b.focus(); }
+              if (ev.key === "Escape") d.parentNode.removeChild(d);
+            });
+            b.addEventListener("keydown", function (ev) {
+              if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); commit(); }
+              if (ev.key === "Escape") d.parentNode.removeChild(d);
+            });
+            t.focus();
+          };
+
+          document.addEventListener("click", function (e) {
+            var add = e.target.closest ? e.target.closest(".tile-add") : null;
+            if (add) { addTile(add); return; }
+            var f = e.target.closest ? e.target.closest("[data-field]") : null;
+            if (f && !f.getAttribute("contenteditable")) {
+              if (e.target.closest(".ent")) return;
+              edit(f);
+            }
+          });
+
+          document.addEventListener("contextmenu", function (e) {
+            var sel = window.getSelection();
+            var text = sel && sel.toString().trim();
+            var inTile = e.target.closest ? e.target.closest(".tile-body, .tile-title, .d-body") : null;
+            if (!text || !inTile) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (openMenu) closeMenu();
+            var range = sel.getRangeAt(0);
+            var menu = document.createElement("div");
+            menu.className = "menu";
+            menu.style.left = e.clientX + "px";
+            menu.style.top = e.clientY + "px";
+            var head = document.createElement("div");
+            head.className = "menu-head";
+            head.textContent = "Lier « " + (text.length > 22 ? text.slice(0, 22) + "…" : text) + " »";
+            menu.appendChild(head);
+            Object.keys(ENTITIES).forEach(function (kind) {
+              Object.keys(ENTITIES[kind]).forEach(function (id) {
+                var meta = ENTITIES[kind][id];
+                var it = document.createElement("div");
+                it.className = "menu-item";
+                it.innerHTML = '<span></span><em></em>';
+                it.querySelector("span").textContent = meta[0];
+                it.querySelector("em").textContent = kind === "perso" ? "personnage" : "décor";
+                it.addEventListener("click", function () {
+                  var a = document.createElement("a");
+                  a.className = "ent ent-" + kind;
+                  a.setAttribute("data-ent", kind);
+                  a.setAttribute("data-ent-id", id);
+                  a.textContent = text;
+                  range.deleteContents();
+                  range.insertNode(a);
+                  sel.removeAllRanges();
+                  closeMenu();
+                });
+                menu.appendChild(it);
+              });
+            });
+            document.body.appendChild(menu);
+            openMenu = menu;
+          }, true);
+
+          var input = document.getElementById("composer-input");
+          var placeholder = "Décrivez ce que vous voulez créer ou modifier…";
+          var replies = {
+            projet: "Je peux ajuster le style, la palette ou le ton — chaque champ séparément.",
+            script: "Je peux réécrire cette séquence sans toucher aux actes voisins.",
+            production: "Je prépare trois variantes de cadrage avant toute génération.",
+            personnages: "L'état héritera de Base ; je ne modifie que ce que vous validez.",
+            decors: "Je ne touche qu'à l'éclairage et à l'eau, l'architecture reste héritée.",
+            export: "Le montage est prêt à 94 % ; un plan reste à générer avant l'export complet."
+          };
+          if (input) {
+            input.addEventListener("focus", function () {
+              if (input.classList.contains("empty")) { input.textContent = ""; input.classList.remove("empty"); }
+            });
+            input.addEventListener("blur", function () {
+              if (!input.textContent.trim()) { input.textContent = placeholder; input.classList.add("empty"); }
+            });
+            input.addEventListener("keydown", function (e) {
+              if (e.key !== "Enter" || e.shiftKey) return;
+              e.preventDefault();
+              var txt = input.textContent.trim();
+              if (!txt) return;
+              var thread = document.querySelector("[data-thread]:not(.off)");
+              if (!thread) return;
+              var tab = thread.getAttribute("data-thread");
+              var mine = document.createElement("div");
+              mine.className = "msg";
+              mine.style.justifyContent = "flex-end";
+              mine.innerHTML = '<div class="bubble" style="max-width:78%"></div><span class="av">F</span>';
+              mine.querySelector(".bubble").textContent = txt;
+              thread.appendChild(mine);
+              var wait = document.createElement("div");
+              wait.className = "msg";
+              wait.innerHTML = '<span class="av av-ai">✦</span><div class="typing"><i></i><i></i><i></i></div>';
+              thread.appendChild(wait);
+              thread.scrollTop = thread.scrollHeight;
+              input.textContent = placeholder;
+              input.classList.add("empty");
+              input.blur();
+              setTimeout(function () {
+                wait.innerHTML = '<span class="av av-ai">✦</span><p class="prose"></p>';
+                wait.querySelector(".prose").textContent = replies[tab] || replies.projet;
+                thread.scrollTop = thread.scrollHeight;
+              }, 900);
+            });
+          }
+        }
+        renderVals() {
+          return {};
+        }
+      }
+    </script>
+  </body>
+</html>
