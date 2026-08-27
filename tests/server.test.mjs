@@ -2,12 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { buildConfig, createCinemaiServer } from "../server.mjs";
+import { createProductionStore } from "../production-store.mjs";
 
 async function withServer(config, run, options = {}) {
   const server = createCinemaiServer({
     config,
     fetchImpl: options.fetchImpl,
     logger: { info() {}, warn() {} },
+    store: options.store,
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -66,7 +68,7 @@ test("mock chat is deterministic and scoped by tab", async () => {
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.mode, "mock");
-    assert.match(body.text, /séquence active/i);
+    assert.match(body.text, /structure narrative/i);
   });
 });
 
@@ -167,6 +169,55 @@ test("serves the canonical Odyssey UI with restrictive headers", async () => {
     const response = await fetch(baseUrl);
     assert.equal(response.status, 200);
     assert.match(response.headers.get("content-security-policy"), /connect-src 'self'/);
-    assert.match(await response.text(), /CinemAI &mdash; Odyssey/);
+    assert.match(await response.text(), /CinemAI — Odyssey/);
   });
+});
+
+test("assistant function calls become pending proposals before mutation", async () => {
+  const fetchImpl = async () => new Response(JSON.stringify({
+    candidates: [{ content: { parts: [
+      { text: "Je prépare le projet." },
+      { functionCall: { name: "set_project", args: { title: "Projet test", brief: "Brief test" } } },
+    ] } }],
+  }), { status: 200, headers: { "Content-Type": "application/json" } });
+  const store = createProductionStore({ persist: false });
+  const config = { ...mockConfig, mode: "google", apiKey: "test-secret" };
+  await withServer(config, async (baseUrl) => {
+    const chat = await fetch(`${baseUrl}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tab: "projet", message: "Prépare mon projet." }),
+    });
+    assert.equal(chat.status, 200);
+    const chatBody = await chat.json();
+    assert.equal(chatBody.proposals.length, 1);
+    assert.equal(chatBody.manifest.project.id, null);
+
+    const decision = await fetch(`${baseUrl}/api/approvals/${chatBody.proposals[0].id}/decision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision: "approve" }),
+    });
+    assert.equal(decision.status, 200);
+    assert.equal((await decision.json()).manifest.project.title, "Projet test");
+  }, { fetchImpl, store });
+});
+
+test("workspace reset requires an explicit confirmation", async () => {
+  const store = createProductionStore({ persist: false });
+  await withServer(mockConfig, async (baseUrl) => {
+    const refused = await fetch(`${baseUrl}/api/workspace/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: false }),
+    });
+    assert.equal(refused.status, 400);
+    const accepted = await fetch(`${baseUrl}/api/workspace/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: "RESET" }),
+    });
+    assert.equal(accepted.status, 200);
+    assert.equal((await accepted.json()).manifest.project.id, null);
+  }, { store });
 });

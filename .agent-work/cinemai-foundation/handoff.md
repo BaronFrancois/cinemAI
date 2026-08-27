@@ -3,31 +3,29 @@
 ## État courant
 
 - Statut : `verifying`
-- Révision de plan : 3
-- Révision approuvée : 3
-- Étape terminée techniquement : workspace Odyssey relié au serveur local Gemini
-- Checkpoint courant : validation humaine du dialogue réel et du rendu UX
+- Révision de plan : 4
+- Révision approuvée : 4
+- Étape terminée techniquement : manifeste-first, approbations humaines et cockpit Odyssey connecté
+- Checkpoint courant : validation humaine du parcours réel avec Gemini
 
 ## Ce qui est établi
 
-Odyssey reste la surface UI canonique. Son composeur appelle maintenant `POST /api/chat`,
-avec un contexte borné et indépendant pour chacun des six onglets. Un serveur Node 20 sans
-dépendance sert l'interface, conserve la clé Google hors du navigateur, écoute uniquement sur
-`127.0.0.1` et propose les modes `mock` et `google`.
+Le studio démarre sans projet, personnage, décor, plan ni média d’exemple. Le manifeste persistant est l’unique source de vérité pour le projet, les assets, les séquences, les plans, la timeline, les propositions et la file de production. Le LLM peut proposer huit opérations typées ; aucune opération ne modifie le manifeste avant une décision humaine explicite.
 
-La configuration locale sélectionne désormais `google` et `gemini-3.5-flash`. Un unique appel
-réel a réussi. La suite serveur (9 tests) et le parcours Playwright desktop/mobile (six onglets,
-envoi clavier et bouton) sont verts. Aucun autre service Google, aucune génération d'image,
-d'audio ou de vidéo, aucun export YouTube et aucun streaming ne sont encore intégrés.
+Production et Export lisent la même timeline canonique. Elle comporte une piste visuelle et cinq pistes audio séparées : dialogues, voix off, bruitages, ambiances et musique. La file locale applique des transitions contrôlées et ne déclenche aucun fournisseur payant.
+
+L’interface Odyssey responsive expose six onglets, le copilote persistant, les cartes d’approbation, la file et la timeline. Le guide `test-guide.html` contient huit prompts paramétrables et les résultats attendus, sans données narratives préchargées.
+
+Preuves automatisées : 17 tests Node verts ; smoke Playwright desktop/mobile sur les six onglets, clavier, bouton et guide ; smoke Playwright isolé prouvant proposition visible, absence de mutation initiale, validation explicite et application de la mutation. Les captures desktop/mobile ont été inspectées visuellement.
+
+## Limites explicites
+
+- Gemini ne fait actuellement que l’orchestration textuelle et les appels d’outils structurés.
+- Nano Banana, Veo, génération audio, rendu final, export YouTube et suivi analytics ne sont pas encore branchés.
+- Le bouton d’avancement des jobs simule uniquement le cycle de production local.
+- La validation UX par François reste distincte des tests automatisés.
+- Claude Code n’est pas branché comme réviseur : `claude mcp serve` expose des outils, pas une seconde intelligence. Une revue headless réelle impliquerait l’envoi de code à Anthropic et attend un consentement explicite sur le périmètre transmis.
 
 ## Prochaine action exacte
 
-Lancer `node server.mjs`, ouvrir `http://127.0.0.1:4175`, puis recueillir le jugement de
-François sur la qualité des réponses et l'ergonomie. Après validation, définir séparément le
-contrat de génération d'assets (Nano Banana), puis les contrats audio et vidéo, sans supposer
-qu'ils utilisent tous la même API ou les mêmes permissions.
-
-## Blocages
-
-Aucun blocage technique connu. La validation humaine UX reste volontairement distincte des
-tests automatisés. Le serveur n'est pas exposé au Wi-Fi ; cette restriction est intentionnelle.
+Lancer `npm start`, ouvrir `http://127.0.0.1:4175`, puis suivre le lien « Guide de test ». Après validation UX, définir le premier contrat fournisseur réel — recommandé : génération d’image de référence — avec estimation de coût, preview et approbation avant appel.

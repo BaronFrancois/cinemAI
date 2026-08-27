@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
+import { createProductionStore, summarizeManifest } from "./production-store.mjs";
+import { extractFunctionCalls, GEMINI_FUNCTION_DECLARATIONS } from "./llm-tools.mjs";
 
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_STATIC_DIR = resolve(PROJECT_ROOT, "mockups", "odyssey-workspace");
@@ -28,12 +30,12 @@ const TAB_CONTEXT = {
 };
 
 const MOCK_REPLIES = {
-  projet: "Mode local : je peux proposer une modification structurée du style, de la palette ou du format.",
-  script: "Mode local : je peux préparer une révision limitée à la séquence active sans modifier les actes voisins.",
-  production: "Mode local : je peux préparer des variantes de cadrage avant toute génération payante.",
-  personnages: "Mode local : je peux proposer un nouvel état en conservant la Base comme référence.",
-  decors: "Mode local : je peux isoler les changements d'éclairage ou d'atmosphère sans réécrire l'architecture.",
-  export: "Mode local : je peux vérifier les éléments manquants avant de préparer une sortie.",
+  projet: "Mode local : décrivez le projet. Les changements seront proposés avant validation.",
+  script: "Mode local : décrivez la structure narrative à préparer.",
+  production: "Mode local : indiquez les plans ou stratégies de génération à préparer.",
+  personnages: "Mode local : décrivez les personnages ou accessoires nécessaires.",
+  decors: "Mode local : décrivez les lieux et leurs contraintes de continuité.",
+  export: "Mode local : la sortie sera dérivée de la timeline validée.",
 };
 
 const MIME_TYPES = {
@@ -170,17 +172,20 @@ function validateChatPayload(payload) {
   return { tab, message, history: cleanHistory };
 }
 
-function systemInstruction(tab) {
+function systemInstruction(tab, manifestSummary) {
   return [
     "Tu es l'assistant de production de CinemAI, un atelier local de préparation de films génératifs.",
     "Réponds en français, de façon concise, concrète et orientée modification vérifiable.",
     "Ne prétends jamais avoir généré, enregistré, publié ou modifié un élément si aucune action outil ne l'a fait.",
-    "Préserve les identifiants, la continuité et le périmètre demandé. Propose avant d'appliquer.",
+    "Utilise les outils pour toute création ou modification structurée. Chaque appel devient une proposition soumise à validation humaine.",
+    "Tu peux appeler plusieurs outils, mais n'invente jamais un identifiant absent de l'état courant.",
+    "Préserve les identifiants, la continuité et le périmètre demandé. Ne lance aucune dépense ni publication.",
     `Contexte de l'onglet actif : ${TAB_CONTEXT[tab]}`,
+    `État structuré courant : ${JSON.stringify(manifestSummary)}`,
   ].join("\n");
 }
 
-export async function callGemini({ config, tab, message, history, fetchImpl = fetch }) {
+export async function callGemini({ config, tab, message, history, manifestSummary = {}, fetchImpl = fetch }) {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`;
   const contents = history.map((item) => ({ role: item.role, parts: [{ text: item.text }] }));
   contents.push({ role: "user", parts: [{ text: message }] });
@@ -193,8 +198,9 @@ export async function callGemini({ config, tab, message, history, fetchImpl = fe
         "x-goog-api-key": config.apiKey,
       },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemInstruction(tab) }] },
+        systemInstruction: { parts: [{ text: systemInstruction(tab, manifestSummary) }] },
         contents,
+        tools: [{ functionDeclarations: GEMINI_FUNCTION_DECLARATIONS }],
         generationConfig: {
           temperature: 0.35,
           maxOutputTokens: 900,
@@ -221,15 +227,18 @@ export async function callGemini({ config, tab, message, history, fetchImpl = fe
   } catch {
     throw Object.assign(new Error("Gemini a renvoyé une réponse illisible."), { status: 502 });
   }
-  const text = (data.candidates?.[0]?.content?.parts || [])
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  const functionCalls = extractFunctionCalls(parts);
+  const text = parts
     .map((part) => typeof part.text === "string" ? part.text : "")
     .join("")
     .trim();
-  if (!text) {
+  if (!text && functionCalls.length === 0) {
     throw Object.assign(new Error("Gemini n'a renvoyé aucun texte exploitable."), { status: 502 });
   }
   return {
-    text,
+    text: text || `${functionCalls.length} proposition${functionCalls.length > 1 ? "s" : ""} préparée${functionCalls.length > 1 ? "s" : ""} pour validation.`,
+    functionCalls,
     usage: data.usageMetadata
       ? {
           promptTokens: data.usageMetadata.promptTokenCount ?? null,
@@ -275,7 +284,13 @@ async function serveStatic(request, response, staticDir) {
   return true;
 }
 
-export function createCinemaiServer({ config, fetchImpl = fetch, staticDir = DEFAULT_STATIC_DIR, logger = console } = {}) {
+export function createCinemaiServer({
+  config,
+  fetchImpl = fetch,
+  staticDir = DEFAULT_STATIC_DIR,
+  logger = console,
+  store = createProductionStore({ persist: false }),
+} = {}) {
   if (!config) throw new Error("Configuration serveur manquante.");
   return createHttpServer(async (request, response) => {
     const requestId = randomUUID();
@@ -296,6 +311,68 @@ export function createCinemaiServer({ config, fetchImpl = fetch, staticDir = DEF
         });
         return;
       }
+      if (url.pathname === "/api/workspace") {
+        if (request.method !== "GET") {
+          sendJson(response, 405, { error: "Méthode non autorisée.", requestId });
+          return;
+        }
+        sendJson(response, 200, { manifest: store.snapshot(), requestId });
+        return;
+      }
+      if (url.pathname === "/api/operations/propose") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "Méthode non autorisée.", requestId });
+          return;
+        }
+        const payload = await readJsonBody(request);
+        const proposal = await store.propose(
+          String(payload?.name || "").trim(),
+          payload?.args && typeof payload.args === "object" && !Array.isArray(payload.args) ? payload.args : {},
+          "manual",
+        );
+        sendJson(response, 201, { proposal, manifest: store.snapshot(), requestId });
+        return;
+      }
+      const approvalMatch = url.pathname.match(/^\/api\/approvals\/([^/]+)\/decision$/);
+      if (approvalMatch) {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "Méthode non autorisée.", requestId });
+          return;
+        }
+        const payload = await readJsonBody(request);
+        const result = await store.decide(decodeURIComponent(approvalMatch[1]), String(payload?.decision || ""));
+        sendJson(response, 200, { ...result, requestId });
+        return;
+      }
+      const jobMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/transition$/);
+      if (jobMatch) {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "Méthode non autorisée.", requestId });
+          return;
+        }
+        const payload = await readJsonBody(request);
+        const result = await store.transitionJob(
+          decodeURIComponent(jobMatch[1]),
+          String(payload?.status || ""),
+          payload?.progress,
+          payload?.error,
+        );
+        sendJson(response, 200, { ...result, requestId });
+        return;
+      }
+      if (url.pathname === "/api/workspace/reset") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "Méthode non autorisée.", requestId });
+          return;
+        }
+        const payload = await readJsonBody(request);
+        if (payload?.confirm !== "RESET") {
+          sendJson(response, 400, { error: "La confirmation RESET est requise.", requestId });
+          return;
+        }
+        sendJson(response, 200, { manifest: await store.reset(), requestId });
+        return;
+      }
       if (url.pathname === "/api/chat") {
         if (request.method !== "POST") {
           sendJson(response, 405, { error: "Méthode non autorisée.", requestId });
@@ -303,10 +380,21 @@ export function createCinemaiServer({ config, fetchImpl = fetch, staticDir = DEF
         }
         const payload = validateChatPayload(await readJsonBody(request));
         const result = config.mode === "mock"
-          ? { text: MOCK_REPLIES[payload.tab], usage: null }
-          : await callGemini({ config, ...payload, fetchImpl });
+          ? { text: MOCK_REPLIES[payload.tab], usage: null, functionCalls: [] }
+          : await callGemini({
+              config,
+              ...payload,
+              manifestSummary: summarizeManifest(store.snapshot()),
+              fetchImpl,
+            });
+        const proposals = [];
+        for (const functionCall of result.functionCalls || []) {
+          proposals.push(await store.propose(functionCall.name, functionCall.args, `assistant:${requestId}`));
+        }
         sendJson(response, 200, {
           text: result.text,
+          proposals,
+          manifest: proposals.length ? store.snapshot() : undefined,
           mode: config.mode,
           model: config.model,
           usage: result.usage,
@@ -342,7 +430,9 @@ export function createCinemaiServer({ config, fetchImpl = fetch, staticDir = DEF
 export async function startFromEnvironment() {
   const values = { ...(await loadLocalEnv()), ...process.env };
   const config = buildConfig(values);
-  const server = createCinemaiServer({ config });
+  const store = createProductionStore({ filePath: resolve(PROJECT_ROOT, "data", "workspace.json") });
+  await store.load();
+  const server = createCinemaiServer({ config, store });
   await new Promise((resolveListen, rejectListen) => {
     server.once("error", rejectListen);
     server.listen(config.port, config.host, resolveListen);

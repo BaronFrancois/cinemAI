@@ -232,3 +232,69 @@ d'images ou de vidéos.
 - État : `approved`
 - Révision approuvée : 3
 - Autorisation : exécution autonome immédiate
+
+## Révision 4 — manifeste, outils et production visible
+
+Approuvée le 2026-08-27 par François avec l'instruction d'exécuter pendant son absence,
+sans aucune donnée d'exemple dans l'application et avec un guide HTML séparé pour les tests.
+
+### Objectif du lot
+
+Transformer Odyssey en workspace réellement vide et pilotable : le LLM propose des opérations
+typées, l'humain les accepte ou les refuse, le manifeste versionné devient la source de vérité,
+et les onglets affichent la même file de production et la même timeline vidéo/audio.
+
+### État initial vérifié
+
+- `verified` — l'interface contient un film, des assets, des plans et des conversations fictifs ;
+- `verified` — `/api/chat` ne traite que du texte et aucun `functionCall` Gemini ;
+- `verified` — aucune persistance, file, timeline canonique ou transition d'état n'existe ;
+- `verified` — le dépôt Git local a été initialisé avant ce lot avec le commit de référence
+  `ac86ac5` ;
+- `verified` — Claude Code 2.1.236 est installé ; son mode serveur MCP expose des outils, pas
+  le modèle Claude. La critique sera donc exécutée en CLI non interactif et lecture seule.
+
+### Étapes approuvées
+
+1. Créer un manifeste vide versionné, un journal d'opérations et une persistance locale atomique.
+2. Ajouter des opérations typées pour projet, assets, plans, timeline et file de génération.
+3. Exposer lecture, propositions, validation/refus et transitions de jobs via l'API locale.
+4. Permettre à Gemini de proposer ces opérations par function calling, sans application implicite.
+5. Remplacer les données Odyssey codées en dur par des projections du manifeste et des états vides.
+6. Afficher une file persistante et une timeline simple avec pistes image/vidéo et audio séparées.
+7. Créer un HTML autonome contenant les prompts, actions et résultats attendus pour la validation.
+8. Tester logique, erreurs, persistance, correction locale, desktop, mobile, clavier et réseau.
+9. Faire critiquer le plan et les preuves par Claude Code en lecture seule ; Codex reste l'unique
+   écrivain canonique.
+
+### Critères d'acceptation
+
+- aucun contenu créatif prérempli dans l'application ;
+- le premier chargement affiche des invitations à créer, pas des exemples ;
+- une proposition LLM n'altère pas le manifeste avant validation ;
+- accepter ou refuser une proposition est visible et traçable ;
+- une modification de plan laisse les autres plans inchangés ;
+- `Production` et `Export` dérivent de la même timeline ;
+- les pistes dialogue, voix off, bruitages, ambiance et musique restent séparées ;
+- chaque job indique stratégie, état, cible et besoin de validation ;
+- aucune clé ou donnée sensible n'est envoyée au navigateur ;
+- le guide de test est séparé de l'état applicatif.
+
+### Exclusions
+
+- appel réel à Nano Banana, Veo, Lyria ou un fournisseur audio ;
+- rendu vidéo final, interpolation réelle ou upload média ;
+- déploiement Google Cloud, WebMCP et MCP partenaire dans ce lot ;
+- collaboration en écriture simultanée entre Codex et Claude.
+
+### Critique et réduction de périmètre
+
+Le lot ne prétend pas produire un film. Il prouve le contrat agentique et les états nécessaires
+pour brancher ensuite les générateurs réels. La timeline est un éditeur simple, pas un NLE : elle
+ordonne des clips et des pistes, mais n'implémente ni effets complexes ni rendu multimédia.
+
+### Validation
+
+- État : `approved`
+- Révision approuvée : 4
+- Autorisation : exécution autonome immédiate

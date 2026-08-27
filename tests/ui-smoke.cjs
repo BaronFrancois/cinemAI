@@ -27,11 +27,30 @@ async function exerciseViewport(browser, name, viewport, useButton) {
     await assert.doesNotReject(() => page.locator(".composer .send").isEnabled());
   }
 
+  // Re-open the active workspace after the final assistant interaction. On
+  // mobile, composing intentionally scrolls to the assistant below the view.
+  await page.locator('.rail-item[data-tab="export"]').click();
+  await page.locator("#workspace h1", { hasText: "Export" }).waitFor();
+
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   assert.equal(overflow, false, `${name}: débordement horizontal`);
   assert.deepEqual(consoleErrors, [], `${name}: erreurs console`);
   assert.deepEqual(externalRequests, [], `${name}: requêtes externes`);
-  await page.screenshot({ path: `tests/cinemai-gemini-mock-${name}.png`, fullPage: true });
+  if (process.env.CINEMAI_SKIP_SCREENSHOTS !== "1") {
+    await page.screenshot({ path: `tests/cinemai-workspace-${name}.png`, fullPage: true });
+  }
+  await page.close();
+}
+
+async function exerciseGuide(browser) {
+  const page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
+  const consoleErrors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  await page.goto(`${baseUrl}/test-guide.html`, { waitUntil: "networkidle" });
+  assert.equal(await page.locator("article.step").count(), 8);
+  assert.deepEqual(consoleErrors, []);
   await page.close();
 }
 
@@ -40,7 +59,8 @@ async function exerciseViewport(browser, name, viewport, useButton) {
   try {
     await exerciseViewport(browser, "desktop", { width: 1440, height: 1000 }, false);
     await exerciseViewport(browser, "mobile", { width: 390, height: 844 }, true);
-    console.log("UI smoke: desktop + mobile, 6 onglets, clavier + bouton OK");
+    await exerciseGuide(browser);
+    console.log("UI smoke: desktop + mobile, 6 onglets, clavier, bouton et guide OK");
   } finally {
     await browser.close();
   }

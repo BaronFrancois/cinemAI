@@ -4,11 +4,11 @@ objective: >-
   modifier un seul plan ou segment et prouver que les autres plans ainsi que les références
   de continuité restent inchangés.
 status: verifying
-plan_revision: 3
-approved_revision: 3
+plan_revision: 4
+approved_revision: 4
 owner: codex
 created_at: 2026-08-20T20:56:41+02:00
-updated_at: 2026-08-24T14:18:50+02:00
+updated_at: 2026-08-27T00:00:00+02:00
 scope:
   - Contrat produit du MVP CinemAI Continuum
   - Production Manifest local et versionné
@@ -21,16 +21,18 @@ non_goals:
   - Publication YouTube et boucle analytique
   - Éditeur vidéo multicouche complet
 acceptance:
-  - Une séquence exemple contient exactement cinq plans et des assets à identifiants stables
+  - Le workspace démarre vide, sans scénario, asset, plan, conversation ou média d'exemple
+  - Le LLM peut proposer des opérations structurées sans muter le projet avant validation
   - Une correction ciblée produit une nouvelle version du seul plan concerné
-  - Les quatre autres plans sont byte-for-byte inchangés dans le test déterministe
+  - Les autres plans sont byte-for-byte inchangés dans le test déterministe
   - Les dépendances de continuité affectées sont listées explicitement
   - Le parcours est reproductible localement par une commande documentée
+  - Les pistes vidéo et audio proviennent d'une timeline canonique unique
 constraints:
   - Local-first
   - Aucun secret dans le dépôt
   - Aucun appel cloud obligatoire pour valider le cœur du MVP
   - Validation humaine obligatoire avant l'exécution de la révision 1
-  - Aucune intégration LLM ou clé Google dans le lot UI Odyssey
   - Clé Google lisible uniquement par le serveur local
   - Une requête réelle minimale autorisée pour valider Flash 3.5
+  - Aucune génération image, vidéo ou audio facturable sans validation humaine explicite

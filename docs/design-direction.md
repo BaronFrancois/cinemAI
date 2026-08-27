@@ -60,3 +60,46 @@ gradients. Elle a été rejetée : elle n'aurait ni repris la logique familière
 rendu la correction locale plus lisible. La version construite conserve le calme
 skeuomorphe d'AIssistant et dépense son audace sur une seule chose, la ligne de continuité.
 
+## Odyssey agentique — révision 4
+
+### Travail unique
+
+Faire passer un projet vierge d'une intention à une production traçable, sans cacher les
+actions de l'agent et sans préremplir l'imaginaire de l'utilisateur.
+
+### Tokens conservés
+
+- `Nuit plateau` — `#10141d` : fond général.
+- `Ardoise` — `#1b212c` : panneaux métier.
+- `Régie` — `#252c38` : cartes et pistes.
+- `Bleu validation` — `#4d7cff` : action approuvée ou sélection.
+- `Ambre attente` — `#d8a64d` : proposition qui attend une décision.
+- `Vert prêt` — `#67c79a` : job terminé ou élément validé.
+- `Craie` — `#f4f6fb` : texte principal.
+
+`Segoe UI Variable` porte l'interface, `Bahnschrift` les titres de plateau et `Cascadia Mono`
+les IDs, versions, timecodes et états. Aucun téléchargement de police n'est nécessaire.
+
+### Structure
+
+```text
+┌ Navigation ┬ Surface métier vide ou alimentée ┬ Assistant général ┐
+│ 6 onglets  │ manifeste / assets / plans       │ conversation       │
+│            │ file + timeline canonique        │ propositions       │
+└────────────┴───────────────────────────────────┴────────────────────┘
+```
+
+Sur mobile, la surface métier précède la conversation et la navigation devient une barre
+basse. La production courante reste résumée dans l'en-tête afin de ne jamais disparaître.
+
+### Signature
+
+Une « ligne de régie » verticale relie les propositions, validations, jobs et clips issus de
+la même action. Elle matérialise la provenance d'un résultat plutôt que de décorer l'écran.
+
+### Autocritique
+
+Une page vide pure serait élégante mais inutilisable ; un exemple prérempli orienterait le
+projet et violerait la demande. La solution retenue utilise des états vides instructifs et des
+boutons d'action sans contenu narratif. L'audace reste concentrée sur la ligne de régie ; les
+cartes, contrôles et onglets conservent la géométrie Odyssey existante.
