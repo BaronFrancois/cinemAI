@@ -3,6 +3,9 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { tmpdir } from "node:os";
+import { promisify } from "node:util";
 import { createProductionStore, summarizeManifest } from "./production-store.mjs";
 import { extractFunctionCalls, GEMINI_FUNCTION_DECLARATIONS } from "./llm-tools.mjs";
 
@@ -158,6 +161,10 @@ export function buildConfig(values = {}) {
   if (!Number.isFinite(videoPollIntervalMs) || videoPollIntervalMs < 1_000 || videoPollIntervalMs > 60_000) {
     throw new Error("CINEMAI_VIDEO_POLL_MS doit être compris entre 1000 et 60000.");
   }
+  const chainMaxLinks = Number(values.CINEMAI_CHAIN_MAX_LINKS ?? 3);
+  if (!Number.isInteger(chainMaxLinks) || chainMaxLinks < 0 || chainMaxLinks > 20) {
+    throw new Error("CINEMAI_CHAIN_MAX_LINKS doit être un entier entre 0 et 20.");
+  }
   const videoMaxWaitMs = Number(values.CINEMAI_VIDEO_MAX_WAIT_MS || 600_000);
   if (!Number.isFinite(videoMaxWaitMs) || videoMaxWaitMs < 30_000 || videoMaxWaitMs > 1_800_000) {
     throw new Error("CINEMAI_VIDEO_MAX_WAIT_MS doit être compris entre 30000 et 1800000.");
@@ -180,6 +187,7 @@ export function buildConfig(values = {}) {
     omniModel,
     videoPollIntervalMs,
     videoMaxWaitMs,
+    chainMaxLinks,
     imageCostsUsd,
     apiKey,
     requestTimeoutMs,
@@ -492,11 +500,54 @@ export async function callGeminiImage({ config, asset, imageRequest, referenceIm
 
 // Omni ne prend pas de champs nommés pour les frames : les images sont une liste
 // ordonnée et c'est le texte qui déclare le rôle de chacune.
-export function buildShotVideoPrompt({ shot, seconds, hasStart, hasEnd, extra = "" }) {
+const execFileAsync = promisify(execFile);
+const FRAME_EXTRACTOR = resolve(PROJECT_ROOT, "tools", "extract-frame");
+
+// Extrait la dernière image d'un clip pour la donner en frame de départ du plan
+// suivant : le raccord est alors exact, puisque c'est littéralement la même
+// image. Dépend d'AVFoundation via tools/extract-frame ; si le binaire n'a pas
+// été compilé, on retombe sur la keyframe du plan plutôt que d'échouer.
+export async function extractLastFrame(videoPath) {
+  const outPath = resolve(tmpdir(), `cinemai-chain-${randomUUID()}.jpg`);
+  try {
+    await execFileAsync(FRAME_EXTRACTOR, [videoPath, outPath], { timeout: 30_000 });
+    const bytes = await readFile(outPath);
+    await unlink(outPath).catch(() => {});
+    return bytes.length ? { mimeType: "image/jpeg", data: bytes.toString("base64") } : null;
+  } catch {
+    await unlink(outPath).catch(() => {});
+    return null;
+  }
+}
+
+function referenceShotVideo(snapshot, shotId) {
+  const clips = (snapshot.media || [])
+    .filter((item) => item.targetType === "shot" && item.targetId === shotId && item.kind === "video");
+  return clips.find((item) => item.status === "approved") || clips[clips.length - 1] || null;
+}
+
+// Nombre de maillons enchaînés d'affilée avant ce plan. La dérive s'accumule à
+// chaque maillon : au-delà du seuil on repart de la keyframe, qui est ancrée
+// sur les planches validées.
+export function chainDepthBefore(snapshot, shots, index) {
+  let depth = 0;
+  for (let i = index; i > 0; i -= 1) {
+    if (shots[i].continuity !== "continuous") break;
+    if (!referenceShotVideo(snapshot, shots[i - 1].id)) break;
+    depth += 1;
+  }
+  return depth;
+}
+
+export function buildShotVideoPrompt({ shot, seconds, hasStart, hasEnd, extra = "", ...options }) {
+  const chained = options.chained === true;
+  const opening = chained
+    ? "La PREMIÈRE image fournie est la dernière image du plan précédent : ce plan enchaîne exactement dessus, sans rien réinitialiser."
+    : "La PREMIÈRE image fournie est la frame de DÉBUT du plan.";
   const frames = hasStart && hasEnd
-    ? "La PREMIÈRE image fournie est la frame de DÉBUT du plan, la SECONDE est la frame de FIN. Anime la transition entre les deux et termine exactement sur la frame de fin."
+    ? `${opening} La SECONDE est la frame de FIN. Anime la transition entre les deux et termine exactement sur la frame de fin.`
     : hasStart
-      ? "L'image fournie est la frame de DÉBUT du plan. Poursuis le mouvement à partir d'elle en conservant décor, personnages et style."
+      ? `${opening} Poursuis le mouvement à partir d'elle en conservant décor, personnages et style.`
       : "";
   const dialogue = (shot.dialogue || []).filter((entry) => entry?.line);
   const spoken = dialogue.length
@@ -798,6 +849,7 @@ export function createCinemaiServer({
   mediaDir = DEFAULT_MEDIA_DIR,
   logger = console,
   store = createProductionStore({ persist: false }),
+  extractFrame = extractLastFrame,
 } = {}) {
   if (!config) throw new Error("Configuration serveur manquante.");
   return createHttpServer(async (request, response) => {
@@ -966,11 +1018,28 @@ export function createCinemaiServer({
           sendJson(response, 409, { error: "Ce plan n'a pas encore d'image de storyboard à animer.", requestId });
           return;
         }
+        // Chaînage : quand ce plan enchaîne un plan déjà animé, on repart de la
+        // dernière image de son clip plutôt que de sa propre keyframe. Le raccord
+        // est alors exact. Mais la dérive s'accumule d'un maillon à l'autre, donc
+        // au-delà du seuil on ré-ancre sur la keyframe.
+        const previous = index > 0 ? shots[index - 1] : null;
+        const previousClip = shot.continuity === "continuous" && previous
+          ? referenceShotVideo(snapshot, previous.id)
+          : null;
+        const depth = chainDepthBefore(snapshot, shots, index);
+        const wantsReanchor = payload?.reanchor === true || depth > (config.chainMaxLinks ?? 3);
+        let chainFrame = null;
+        if (previousClip && !wantsReanchor) {
+          chainFrame = await extractFrame(resolve(mediaDir, previousClip.fileName));
+        }
+        const startFrom = chainFrame ? "chain" : "keyframe";
+
         // La frame de fin n'existe que si le plan suivant est déclaré continu.
         const next = shots[index + 1];
         const endMedia = next && next.continuity === "continuous" ? referenceShotImage(snapshot, next.id) : null;
         const frames = [];
-        for (const media of [startMedia, endMedia]) {
+        if (chainFrame) frames.push(chainFrame);
+        for (const media of [chainFrame ? null : startMedia, endMedia]) {
           if (!media) continue;
           try {
             const bytes = await readFile(resolve(mediaDir, media.fileName));
@@ -992,6 +1061,7 @@ export function createCinemaiServer({
           seconds,
           hasStart: true,
           hasEnd: frames.length > 1,
+          chained: startFrom === "chain",
           extra: String(payload?.prompt || "").trim().slice(0, 2_000),
         });
         const generated = config.mode === "mock"
@@ -1016,7 +1086,15 @@ export function createCinemaiServer({
             provider: generated.provider,
             model: generated.model,
           });
-          sendJson(response, 201, { ...result, seconds, framesUsed: frames.length, requestId });
+          sendJson(response, 201, {
+            ...result,
+            seconds,
+            framesUsed: frames.length,
+            startFrom,
+            chainDepth: startFrom === "chain" ? depth : 0,
+            reanchored: Boolean(previousClip) && startFrom === "keyframe",
+            requestId,
+          });
         } catch (error) {
           await unlink(filePath).catch(() => {});
           throw error;

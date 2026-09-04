@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { buildConfig, buildShotVideoPrompt, callGeminiImage, callOmniVideo, createCinemaiServer } from "../server.mjs";
+import { buildConfig, buildShotVideoPrompt, callGeminiImage, callOmniVideo, chainDepthBefore, createCinemaiServer } from "../server.mjs";
 import { createProductionStore } from "../production-store.mjs";
 
 async function withServer(config, run, options = {}) {
@@ -14,6 +14,7 @@ async function withServer(config, run, options = {}) {
     logger: { info() {}, warn() {} },
     store: options.store,
     mediaDir: options.mediaDir,
+    ...(options.extractFrame ? { extractFrame: options.extractFrame } : {}),
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -1053,4 +1054,118 @@ test("a set layout guides geography without becoming the identity reference", as
   } finally {
     await rm(mediaDir, { recursive: true, force: true });
   }
+});
+
+test("a continuous shot chains on the previous clip, then re-anchors on drift", async () => {
+  const mediaDir = await mkdtemp(resolve(tmpdir(), "cinemai-chain-"));
+  const store = createProductionStore({ persist: false });
+  const project = await store.propose("set_project", { title: "Chaîne" }, "test");
+  await store.decide(project.id, "approve");
+  const makeShot = async (title, continuity) => {
+    const proposal = await store.propose("create_shot", {
+      title, description: `${title} en action.`, durationMs: 4_000, continuity,
+    }, "test");
+    return (await store.decide(proposal.id, "approve")).approval.result.entityId;
+  };
+  const a = await makeShot("Ouverture", "cut");
+  const b = await makeShot("Suite", "continuous");
+  const c = await makeShot("Fin", "continuous");
+
+  let extractions = 0;
+  const extractFrame = async () => {
+    extractions += 1;
+    return { mimeType: "image/jpeg", data: Buffer.from("frame-extraite").toString("base64") };
+  };
+  try {
+    await withServer(mockConfig, async (baseUrl) => {
+      const keyframe = (id) => fetch(`${baseUrl}/api/shots/${id}/images/generate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "GENERATE_IMAGE" }),
+      });
+      const video = (id, body = {}) => fetch(`${baseUrl}/api/shots/${id}/videos/generate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "GENERATE_VIDEO", ...body }),
+      }).then((r) => r.json());
+      for (const id of [a, b, c]) await keyframe(id);
+
+      // Premier plan : rien à enchaîner, il part de sa propre keyframe.
+      const first = await video(a);
+      assert.equal(first.startFrom, "keyframe");
+      assert.equal(first.chainDepth, 0);
+      assert.equal(first.reanchored, false);
+      assert.equal(extractions, 0);
+
+      // Plan continu suivant un plan animé : on repart de la dernière image du clip.
+      const second = await video(b);
+      assert.equal(second.startFrom, "chain");
+      assert.equal(second.chainDepth, 1);
+      assert.equal(extractions, 1);
+      assert.match(second.media.prompt, /dernière image du plan précédent/);
+
+      // Demander explicitement un ré-ancrage repasse par la keyframe.
+      const forced = await video(b, { reanchor: true });
+      assert.equal(forced.startFrom, "keyframe");
+      assert.equal(forced.reanchored, true);
+      assert.doesNotMatch(forced.media.prompt, /dernière image du plan précédent/);
+    }, { store, mediaDir, extractFrame });
+  } finally {
+    await rm(mediaDir, { recursive: true, force: true });
+  }
+});
+
+test("chaining falls back to the keyframe when frame extraction is unavailable", async () => {
+  const mediaDir = await mkdtemp(resolve(tmpdir(), "cinemai-nochain-"));
+  const store = createProductionStore({ persist: false });
+  const project = await store.propose("set_project", { title: "Sans Swift" }, "test");
+  await store.decide(project.id, "approve");
+  const mk = async (title, continuity) => {
+    const proposal = await store.propose("create_shot", {
+      title, description: `${title}.`, durationMs: 4_000, continuity,
+    }, "test");
+    return (await store.decide(proposal.id, "approve")).approval.result.entityId;
+  };
+  const a = await mk("Un", "cut");
+  const b = await mk("Deux", "continuous");
+  try {
+    await withServer(mockConfig, async (baseUrl) => {
+      for (const id of [a, b]) {
+        await fetch(`${baseUrl}/api/shots/${id}/images/generate`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirm: "GENERATE_IMAGE" }),
+        });
+      }
+      await fetch(`${baseUrl}/api/shots/${a}/videos/generate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "GENERATE_VIDEO" }),
+      });
+      const chained = await fetch(`${baseUrl}/api/shots/${b}/videos/generate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "GENERATE_VIDEO" }),
+      }).then((r) => r.json());
+      // L'extracteur absent ne doit pas faire échouer la génération.
+      assert.equal(chained.startFrom, "keyframe");
+      assert.equal(chained.media.kind, "video");
+    }, { store, mediaDir, extractFrame: async () => null });
+  } finally {
+    await rm(mediaDir, { recursive: true, force: true });
+  }
+});
+
+test("chain depth stops at a cut and at an unanimated shot", async () => {
+  const shots = [
+    { id: "s1", continuity: "cut" },
+    { id: "s2", continuity: "continuous" },
+    { id: "s3", continuity: "continuous" },
+    { id: "s4", continuity: "cut" },
+    { id: "s5", continuity: "continuous" },
+  ];
+  const clip = (targetId) => ({ targetType: "shot", targetId, kind: "video", status: "ready" });
+  const full = { media: [clip("s1"), clip("s2"), clip("s3"), clip("s4")] };
+  assert.equal(chainDepthBefore(full, shots, 0), 0);
+  assert.equal(chainDepthBefore(full, shots, 2), 2);
+  // Une coupe interrompt la chaîne même si les plans précédents sont animés.
+  assert.equal(chainDepthBefore(full, shots, 3), 0);
+  assert.equal(chainDepthBefore(full, shots, 4), 1);
+  // Un plan précédent non animé interrompt aussi la chaîne.
+  assert.equal(chainDepthBefore({ media: [clip("s1")] }, shots, 2), 0);
 });
