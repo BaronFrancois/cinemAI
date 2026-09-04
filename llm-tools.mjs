@@ -163,6 +163,37 @@ export const GEMINI_FUNCTION_DECLARATIONS = [
   },
 ];
 
+// Outils de lecture seule : ils interrogent la télémétrie de production dans
+// ClickHouse, à travers le serveur MCP officiel. Contrairement aux opérations,
+// ils ne modifient rien et s'exécutent donc sans validation humaine.
+export const ANALYTICS_TOOL_NAMES = new Set(["list_production_tables", "query_production_data"]);
+
+export const ANALYTICS_FUNCTION_DECLARATIONS = [
+  {
+    name: "list_production_tables",
+    description: "Lister les tables de télémétrie de production disponibles dans ClickHouse, avec leur schéma. À utiliser avant d'écrire une requête.",
+    parameters: { type: "object", properties: {}, },
+  },
+  {
+    name: "query_production_data",
+    description: [
+      "Interroger la télémétrie de production en SQL ClickHouse (lecture seule).",
+      "Tables : production_events (journal des décisions et générations),",
+      "media_generations (une ligne par image ou clip généré, avec cost_usd, version, chain_depth, reanchored),",
+      "approvals (propositions de l'agent, avec status et decision_ms, la latence de décision humaine).",
+      "Sert à répondre sur le coût d'un film, les plans les plus régénérés, la dérive du personnage",
+      "le long d'une chaîne, ou les assets sans référence validée.",
+    ].join(" "),
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Requête SELECT ClickHouse. Toujours préfixer les tables par cinemai." },
+      },
+      required: ["query"],
+    },
+  },
+];
+
 export function extractFunctionCalls(parts = []) {
   return parts
     .filter((part) => part?.functionCall && typeof part.functionCall.name === "string")

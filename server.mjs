@@ -7,7 +7,14 @@ import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { createProductionStore, summarizeManifest } from "./production-store.mjs";
-import { extractFunctionCalls, GEMINI_FUNCTION_DECLARATIONS } from "./llm-tools.mjs";
+import { clickhouseConfig } from "./clickhouse.mjs";
+import { clickhouseMcpEnv, createMcpClient } from "./mcp-client.mjs";
+import {
+  ANALYTICS_FUNCTION_DECLARATIONS,
+  ANALYTICS_TOOL_NAMES,
+  extractFunctionCalls,
+  GEMINI_FUNCTION_DECLARATIONS,
+} from "./llm-tools.mjs";
 
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_STATIC_DIR = resolve(PROJECT_ROOT, "mockups", "odyssey-workspace");
@@ -775,13 +782,26 @@ function systemInstruction(tab, manifestSummary) {
   ].join("\n");
 }
 
-export async function callGemini({ config, tab, message, history, manifestSummary = {}, workflowContinuation = false, fetchImpl = fetch }) {
+export async function callGemini({
+  config,
+  tab,
+  message,
+  history,
+  manifestSummary = {},
+  workflowContinuation = false,
+  fetchImpl = fetch,
+  analytics = null,
+  maxAnalyticsRounds = 5,
+}) {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`;
   const contents = history.map((item) => ({ role: item.role, parts: [{ text: item.text }] }));
   contents.push({ role: "user", parts: [{ text: message }] });
+  const declarations = analytics
+    ? [...GEMINI_FUNCTION_DECLARATIONS, ...ANALYTICS_FUNCTION_DECLARATIONS]
+    : GEMINI_FUNCTION_DECLARATIONS;
+  let analyticsRounds = 0;
   let upstream;
-  try {
-    upstream = await fetchImpl(endpoint, {
+  const request = async () => fetchImpl(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -790,17 +810,22 @@ export async function callGemini({ config, tab, message, history, manifestSummar
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemInstruction(tab, manifestSummary) }] },
         contents,
-        tools: [{ functionDeclarations: GEMINI_FUNCTION_DECLARATIONS }],
+        tools: [{ functionDeclarations: declarations }],
         ...(workflowContinuation ? {
           toolConfig: { functionCallingConfig: { mode: "ANY" } },
         } : {}),
         generationConfig: {
           temperature: 0.35,
-          maxOutputTokens: 900,
+          // Un résultat de télémétrie occupe du contexte, et les jetons de
+          // réflexion comptent dans cette limite : trop bas, le modèle épuise
+          // son budget avant d'avoir rédigé sa réponse.
+          maxOutputTokens: analytics ? 2_400 : 900,
         },
       }),
       signal: AbortSignal.timeout(config.requestTimeoutMs),
     });
+  try {
+    upstream = await request();
   } catch (error) {
     if (error?.name === "TimeoutError" || error?.name === "AbortError") {
       throw Object.assign(new Error("Gemini n'a pas répondu dans le délai prévu."), { status: 504 });
@@ -820,18 +845,64 @@ export async function callGemini({ config, tab, message, history, manifestSummar
   } catch {
     throw Object.assign(new Error("Gemini a renvoyé une réponse illisible."), { status: 502 });
   }
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  const functionCalls = extractFunctionCalls(parts);
+  let parts = data.candidates?.[0]?.content?.parts || [];
+  let functionCalls = extractFunctionCalls(parts);
+  const analyticsUsed = [];
+  let carriedWrites = [];
+
+  // Les outils d'analyse sont en lecture seule : on les exécute tout de suite,
+  // on renvoie leur résultat au modèle, et il reprend la main. Les opérations
+  // de production, elles, restent des propositions soumises à validation.
+  while (analytics && analyticsRounds < maxAnalyticsRounds) {
+    // On réémet les parties telles que le modèle les a produites : Gemini 3
+    // exige leur thought_signature, qu'une reconstruction à la main perdrait.
+    const readParts = parts.filter((part) => part?.functionCall && ANALYTICS_TOOL_NAMES.has(part.functionCall.name));
+    if (!readParts.length) break;
+    // Le modèle peut mêler lecture et opérations dans un même tour : on exécute
+    // la lecture et on met les opérations de côté pour ne pas les perdre.
+    const writeCalls = functionCalls.filter((call) => !ANALYTICS_TOOL_NAMES.has(call.name));
+    if (writeCalls.length) carriedWrites = writeCalls;
+    const reads = readParts.map((part) => ({ name: part.functionCall.name, args: part.functionCall.args || {} }));
+    analyticsRounds += 1;
+    const responses = [];
+    for (const call of reads) {
+      const outcome = await analytics(call.name, call.args || {});
+      // Un schéma complet peut être très long : on le tronque pour laisser au
+      // modèle de quoi répondre.
+      if (typeof outcome.text === "string" && outcome.text.length > 6_000) {
+        outcome.text = `${outcome.text.slice(0, 6_000)}\n… (résultat tronqué)`;
+      }
+      analyticsUsed.push({ name: call.name, args: call.args || {}, ok: !outcome.isError });
+      responses.push({
+        functionResponse: { name: call.name, response: { result: outcome.text ?? "", error: outcome.isError ? true : undefined } },
+      });
+    }
+    contents.push({ role: "model", parts: readParts });
+    contents.push({ role: "user", parts: responses });
+    const next = await request();
+    if (!next.ok) break;
+    const nextData = await next.json().catch(() => null);
+    if (!nextData) break;
+    data = nextData;
+    parts = data.candidates?.[0]?.content?.parts || [];
+    functionCalls = extractFunctionCalls(parts);
+  }
+
+  // Une opération d'analyse laissée en suspens ne doit jamais devenir une
+  // proposition à valider : elle ne modifie rien.
+  functionCalls = functionCalls.filter((call) => !ANALYTICS_TOOL_NAMES.has(call.name));
+  if (!functionCalls.length && carriedWrites.length) functionCalls = carriedWrites;
   const text = parts
     .map((part) => typeof part.text === "string" ? part.text : "")
     .join("")
     .trim();
-  if (!text && functionCalls.length === 0) {
+  if (!text && functionCalls.length === 0 && !analyticsUsed.length) {
     throw Object.assign(new Error("Gemini n'a renvoyé aucun texte exploitable."), { status: 502 });
   }
   return {
     text: text || `${functionCalls.length} proposition${functionCalls.length > 1 ? "s" : ""} préparée${functionCalls.length > 1 ? "s" : ""} pour validation.`,
     functionCalls,
+    analyticsUsed,
     usage: data.usageMetadata
       ? {
           promptTokens: data.usageMetadata.promptTokenCount ?? null,
@@ -885,6 +956,7 @@ export function createCinemaiServer({
   logger = console,
   store = createProductionStore({ persist: false }),
   extractFrame = extractLastFrame,
+  analytics = null,
 } = {}) {
   if (!config) throw new Error("Configuration serveur manquante.");
   return createHttpServer(async (request, response) => {
@@ -1275,6 +1347,7 @@ export function createCinemaiServer({
         const result = config.mode === "mock"
           ? { text: MOCK_REPLIES[payload.tab], usage: null, functionCalls: [] }
           : await callGemini({
+              analytics,
               config,
               ...payload,
               manifestSummary: summarizeManifest(manifestBeforeChat),
@@ -1295,6 +1368,8 @@ export function createCinemaiServer({
           mode: config.mode,
           model: config.model,
           usage: result.usage,
+          // Trace des lectures de télémétrie faites par l'agent via MCP.
+          analyticsUsed: result.analyticsUsed || [],
           omittedProposalCount: Math.max(0, (result.functionCalls || []).length - proposals.length),
           requestId,
         });
@@ -1320,6 +1395,9 @@ export function createCinemaiServer({
         requestId,
         status,
         durationMs: Date.now() - startedAt,
+        // Sans le message, une 500 est indiagnostiquable côté serveur.
+        reason: error?.message,
+        where: String(error?.stack || "").split("\n")[1]?.trim(),
       });
     }
   });
@@ -1335,7 +1413,23 @@ export async function startFromEnvironment() {
     : resolve(PROJECT_ROOT, "data");
   const store = createProductionStore({ filePath: resolve(dataDir, "workspace.json") });
   await store.load();
-  const server = createCinemaiServer({ config, store, mediaDir: resolve(dataDir, "media") });
+  // L'agent lit la télémétrie à travers le serveur MCP officiel. Si ClickHouse
+  // n'est pas configuré, l'application fonctionne sans ces outils.
+  const chConfig = clickhouseConfig(values);
+  let analytics = null;
+  if (chConfig) {
+    const mcp = createMcpClient({ env: clickhouseMcpEnv(chConfig) });
+    analytics = async (name, args) => {
+      try {
+        if (!mcp.running) await mcp.start();
+        if (name === "list_production_tables") return await mcp.callTool("list_tables", { database: chConfig.database });
+        return await mcp.callTool("run_query", { query: String(args.query || "") });
+      } catch (error) {
+        return { text: `Télémétrie indisponible : ${error.message}`, isError: true };
+      }
+    };
+  }
+  const server = createCinemaiServer({ config, store, mediaDir: resolve(dataDir, "media"), analytics });
   await new Promise((resolveListen, rejectListen) => {
     server.once("error", rejectListen);
     server.listen(config.port, config.host, resolveListen);

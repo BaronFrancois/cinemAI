@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { buildConfig, buildShotVideoPrompt, callGeminiImage, callOmniVideo, chainDepthBefore, createCinemaiServer, frameExtractorCommand } from "../server.mjs";
+import { buildConfig, buildShotVideoPrompt, callGeminiImage, callGemini, callOmniVideo, chainDepthBefore, createCinemaiServer, frameExtractorCommand } from "../server.mjs";
 import { createProductionStore } from "../production-store.mjs";
 
 async function withServer(config, run, options = {}) {
@@ -1225,4 +1225,81 @@ test("a generated clip carries its cost, priced per generated second", async () 
   } finally {
     await rm(mediaDir, { recursive: true, force: true });
   }
+});
+
+test("read-only analytics run immediately and never become approvals", async () => {
+  const executed = [];
+  const analytics = async (name, args) => {
+    executed.push({ name, args });
+    return { text: '{"rows":[["image",16,1.072]]}', isError: false };
+  };
+  let round = 0;
+  const fetchImpl = async () => {
+    round += 1;
+    // Premier tour : le modèle demande la télémétrie et propose un plan.
+    const parts = round === 1
+      ? [
+          { functionCall: { name: "query_production_data", args: { query: "SELECT 1" } } },
+          { functionCall: { name: "create_shot", args: { description: "Un plan." } } },
+        ]
+      : [{ text: "Les images ont coûté 1,07 $ jusqu'ici." }];
+    return new Response(JSON.stringify({ candidates: [{ content: { parts } }] }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  const result = await callGemini({
+    config: { ...mockConfig, mode: "google", apiKey: "k", model: "gemini-3.5-flash" },
+    tab: "production",
+    message: "Combien ai-je dépensé ?",
+    history: [],
+    fetchImpl,
+    analytics,
+  });
+
+  // L'outil de lecture a bien été exécuté, via l'exécuteur MCP.
+  assert.deepEqual(executed, [{ name: "query_production_data", args: { query: "SELECT 1" } }]);
+  assert.equal(result.analyticsUsed.length, 1);
+  assert.equal(result.analyticsUsed[0].ok, true);
+  assert.match(result.text, /1,07/);
+  // Il ne doit jamais se retrouver dans les propositions à valider.
+  assert.equal(result.functionCalls.some((call) => call.name === "query_production_data"), false);
+  assert.equal(round, 2, "le résultat est renvoyé au modèle, qui reprend la main");
+});
+
+test("without clickhouse the analytics tools are not offered at all", async () => {
+  let body = null;
+  const fetchImpl = async (url, options) => {
+    body = JSON.parse(options.body);
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "ok" }] } }] }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  };
+  await callGemini({
+    config: { ...mockConfig, mode: "google", apiKey: "k", model: "gemini-3.5-flash" },
+    tab: "projet", message: "bonjour", history: [], fetchImpl,
+  });
+  const names = body.tools[0].functionDeclarations.map((d) => d.name);
+  assert.equal(names.includes("query_production_data"), false);
+  assert.ok(names.includes("create_shot"), "les opérations de production restent proposées");
+});
+
+test("a failing analytics call is reported to the model instead of crashing", async () => {
+  let round = 0;
+  const fetchImpl = async () => {
+    round += 1;
+    const parts = round === 1
+      ? [{ functionCall: { name: "query_production_data", args: { query: "SELECT bad" } } }]
+      : [{ text: "La table demandée n'existe pas." }];
+    return new Response(JSON.stringify({ candidates: [{ content: { parts } }] }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  };
+  const result = await callGemini({
+    config: { ...mockConfig, mode: "google", apiKey: "k", model: "gemini-3.5-flash" },
+    tab: "production", message: "?", history: [], fetchImpl,
+    analytics: async () => ({ text: "Unknown table", isError: true }),
+  });
+  assert.equal(result.analyticsUsed[0].ok, false);
+  assert.match(result.text, /n'existe pas/);
 });
