@@ -1,0 +1,35 @@
+# Déploiement Fly.io : un conteneur avec disque persistant.
+app = "cinemai"
+primary_region = "cdg"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  CINEMAI_SERVER_HOST = "0.0.0.0"
+  CINEMAI_SERVER_PORT = "8080"
+  CINEMAI_LLM_MODE = "google"
+  CINEMAI_DATA_DIR = "/data"
+
+# Le manifeste et les médias doivent survivre aux redéploiements.
+[[mounts]]
+  source = "cinemai_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

@@ -140,11 +140,14 @@ export function buildConfig(values = {}) {
   if (!new Set(["mock", "google"]).has(mode)) {
     throw new Error("CINEMAI_LLM_MODE doit valoir mock ou google.");
   }
+  // En local on reste sur la boucle locale : la clé ne doit pas fuiter sur le
+  // réseau. En conteneur, l'isolation est assurée par l'hébergeur et il faut
+  // écouter sur toutes les interfaces pour que le proxy atteigne le serveur.
   const host = values.CINEMAI_SERVER_HOST || "127.0.0.1";
-  if (host !== "127.0.0.1" && host !== "localhost") {
-    throw new Error("CINEMAI_SERVER_HOST doit rester local (127.0.0.1 ou localhost).");
+  if (!new Set(["127.0.0.1", "localhost", "0.0.0.0", "::"]).has(host)) {
+    throw new Error("CINEMAI_SERVER_HOST doit valoir 127.0.0.1, localhost, 0.0.0.0 ou ::.");
   }
-  const port = Number(values.CINEMAI_SERVER_PORT || 4175);
+  const port = Number(values.CINEMAI_SERVER_PORT || values.PORT || 4175);
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
     throw new Error("CINEMAI_SERVER_PORT invalide.");
   }
@@ -1325,17 +1328,23 @@ export function createCinemaiServer({
 export async function startFromEnvironment() {
   const values = { ...(await loadLocalEnv()), ...process.env };
   const config = buildConfig(values);
-  const store = createProductionStore({ filePath: resolve(PROJECT_ROOT, "data", "workspace.json") });
+  // En conteneur, le manifeste et les médias vivent sur un volume monté, sans
+  // quoi ils disparaîtraient à chaque redéploiement.
+  const dataDir = values.CINEMAI_DATA_DIR
+    ? resolve(values.CINEMAI_DATA_DIR)
+    : resolve(PROJECT_ROOT, "data");
+  const store = createProductionStore({ filePath: resolve(dataDir, "workspace.json") });
   await store.load();
-  const server = createCinemaiServer({ config, store });
+  const server = createCinemaiServer({ config, store, mediaDir: resolve(dataDir, "media") });
   await new Promise((resolveListen, rejectListen) => {
     server.once("error", rejectListen);
     server.listen(config.port, config.host, resolveListen);
   });
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : config.port;
-  console.log(`CinemAI local : http://${config.host}:${port}`);
+  console.log(`CinemAI : http://${config.host}:${port}`);
   console.log(`LLM : ${config.mode} · ${config.model}`);
+  console.log(`Données : ${dataDir}`);
   return server;
 }
 

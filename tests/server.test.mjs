@@ -37,11 +37,17 @@ const mockConfig = {
   requestTimeoutMs: 1_000,
 };
 
-test("configuration refuses remote exposure and invalid live mode", () => {
+test("configuration binds locally by default and refuses arbitrary hosts", () => {
+  // Par défaut on n'écoute que la boucle locale : la clé ne doit pas fuiter.
+  assert.equal(buildConfig({}).host, "127.0.0.1");
+  // En conteneur, écouter toutes les interfaces est nécessaire et assumé.
+  assert.equal(buildConfig({ CINEMAI_SERVER_HOST: "0.0.0.0" }).host, "0.0.0.0");
   assert.throws(
-    () => buildConfig({ CINEMAI_SERVER_HOST: "0.0.0.0" }),
-    /doit rester local/i,
+    () => buildConfig({ CINEMAI_SERVER_HOST: "203.0.113.7" }),
+    /127\.0\.0\.1, localhost, 0\.0\.0\.0 ou ::/i,
   );
+  // L'hébergeur impose souvent le port par PORT.
+  assert.equal(buildConfig({ PORT: "8080" }).port, 8080);
   assert.throws(
     () => buildConfig({ CINEMAI_LLM_MODE: "google" }),
     /GEMINI_API_KEY manque/i,
