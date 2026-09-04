@@ -833,11 +833,23 @@ export async function callGemini({
     throw Object.assign(new Error("Impossible de joindre Gemini."), { status: 502 });
   }
   if (!upstream.ok) {
-    const status = upstream.status === 429 ? 429 : upstream.status === 401 || upstream.status === 403 ? 502 : 502;
+    // Sans le détail renvoyé par Google, un refus est indiagnostiquable :
+    // modèle inconnu, clé invalide et quota épuisé se ressemblent tous.
+    const detail = await upstream.text().then(
+      (body) => {
+        try {
+          return String(JSON.parse(body)?.error?.message || "").split("\n")[0].slice(0, 300);
+        } catch {
+          return "";
+        }
+      },
+      () => "",
+    );
+    const status = upstream.status === 429 ? 429 : 502;
     const messageText = upstream.status === 429
       ? "Le quota Gemini est momentanément atteint. Réessayez plus tard."
       : "Gemini a refusé la requête. Vérifiez le modèle, la clé et la facturation côté serveur.";
-    throw Object.assign(new Error(messageText), { status });
+    throw Object.assign(new Error(detail ? `${messageText} Détail : ${detail}` : messageText), { status });
   }
   let data;
   try {
