@@ -21,6 +21,7 @@ export const AUDIO_TRACKS = new Set([
 export const OPERATION_NAMES = new Set([
   "set_project",
   "create_asset",
+  "update_asset",
   "create_sequence",
   "create_shot",
   "update_shot",
@@ -44,6 +45,23 @@ const positiveInteger = (value, fallback, min, max) => {
   return Number.isInteger(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
 };
 
+export const SHOT_CONTINUITIES = new Set(["cut", "continuous"]);
+
+// Une réplique doit être arrêtée avant la génération vidéo : Veo produit la
+// synchronisation labiale en même temps que l'image, elle n'est pas ajoutable après.
+function cleanDialogue(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+      const line = cleanText(entry.line, 600);
+      if (!line) return null;
+      return { speaker: cleanText(entry.speaker, 120), line };
+    })
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
 function fail(message, status = 400) {
   throw Object.assign(new Error(message), { status });
 }
@@ -57,12 +75,17 @@ export function createEmptyManifest(now = () => new Date().toISOString()) {
       id: null,
       title: "",
       brief: "",
+      premise: "",
+      genre: "",
+      visualStyle: "",
+      narrativeOutline: "",
       aspectRatio: "16:9",
       fps: 24,
       durationSeconds: 8,
-      status: "draft",
+      status: "idea",
     },
     assets: [],
+    media: [],
     sequences: [],
     shots: [],
     timeline: {
@@ -82,8 +105,68 @@ export function createEmptyManifest(now = () => new Date().toISOString()) {
   };
 }
 
+function normalizeManifest(value, now) {
+  const manifest = value && typeof value === "object" ? value : createEmptyManifest(now);
+  if (!Array.isArray(manifest.media)) manifest.media = [];
+  if (!Array.isArray(manifest.assets)) manifest.assets = [];
+  for (const asset of manifest.assets) {
+    if (!Array.isArray(asset.references)) asset.references = [];
+    if (!Array.isArray(asset.states)) asset.states = [];
+    if (!Number.isInteger(asset.version) || asset.version < 1) asset.version = 1;
+    if (typeof asset.updatedAt !== "string") asset.updatedAt = asset.createdAt || now();
+  }
+  if (!Array.isArray(manifest.shots)) manifest.shots = [];
+  for (const shot of manifest.shots) {
+    if (!Array.isArray(shot.dialogue)) shot.dialogue = [];
+    if (!SHOT_CONTINUITIES.has(shot.continuity)) shot.continuity = "cut";
+  }
+  if (manifest.project && manifest.project.id && (!manifest.project.status || manifest.project.status === "draft")) {
+    manifest.project.status = "structured";
+  }
+  for (const field of ["premise", "genre", "visualStyle", "narrativeOutline"]) {
+    if (typeof manifest.project?.[field] !== "string") manifest.project[field] = "";
+  }
+  return manifest;
+}
+
 function clone(value) {
   return structuredClone(value);
+}
+
+const GENERATED_ID_FIELD_PATTERN = /Id$/;
+
+function collectKnownIds(manifest) {
+  const known = new Set();
+  const collections = [manifest.assets, manifest.sequences, manifest.shots, manifest.media];
+  for (const collection of collections || []) {
+    for (const item of collection || []) {
+      if (item && typeof item.id === "string") known.add(item.id);
+    }
+  }
+  return known;
+}
+
+// Deux propositions décrivant la même intention (même titre, même emplacement, mêmes
+// paramètres) doivent être reconnues comme un doublon même si le modèle a généré un
+// identifiant neuf à chaque appel pour l'entité qu'il propose de créer. On ne neutralise
+// donc, dans la clé de comparaison, que les champs `...Id` dont la valeur ne correspond à
+// aucune entité déjà connue du manifeste : un identifiant qui référence un asset ou un plan
+// existant reste, lui, déterminant (éditer l'asset A n'est jamais un doublon d'éditer l'asset B).
+function stableArgsKey(name, args, knownIds) {
+  const normalize = (value, keyName) => {
+    if (Array.isArray(value)) return value.map((item) => normalize(item, keyName));
+    if (value && typeof value === "object") {
+      return Object.keys(value).sort().reduce((acc, key) => {
+        acc[key] = normalize(value[key], key);
+        return acc;
+      }, {});
+    }
+    if (keyName && GENERATED_ID_FIELD_PATTERN.test(keyName) && typeof value === "string" && !knownIds.has(value)) {
+      return "::nouvelle-entite::";
+    }
+    return value;
+  };
+  return `${name}::${JSON.stringify(normalize(args || {}, null))}`;
 }
 
 function recalculateTimeline(manifest) {
@@ -94,6 +177,9 @@ function recalculateTimeline(manifest) {
 
 function requireProject(manifest) {
   if (!manifest.project.id) fail("Créez d'abord le projet.", 409);
+  if (manifest.project.status !== "structured") {
+    fail("Validez d'abord la présentation structurée du projet.", 409);
+  }
 }
 
 function requireShot(manifest, shotId) {
@@ -115,15 +201,24 @@ function applyOperation(manifest, operation, now) {
   if (name === "set_project") {
     const title = cleanText(args.title, 120);
     const brief = cleanText(args.brief, 4_000);
-    if (!title && !brief) fail("Le projet doit recevoir un titre ou un brief.");
+    const premise = cleanText(args.premise, 2_000);
+    const genre = cleanText(args.genre, 240);
+    const visualStyle = cleanText(args.visualStyle, 2_000);
+    const narrativeOutline = cleanText(args.narrativeOutline, 4_000);
+    if (!title && !brief && !premise) fail("Le projet doit recevoir un titre, une prémisse ou un brief.");
     if (!manifest.project.id) manifest.project.id = `project_${randomUUID()}`;
     if (title) manifest.project.title = title;
     if (brief) manifest.project.brief = brief;
+    if (premise) manifest.project.premise = premise;
+    if (genre) manifest.project.genre = genre;
+    if (visualStyle) manifest.project.visualStyle = visualStyle;
+    if (narrativeOutline) manifest.project.narrativeOutline = narrativeOutline;
     if (args.aspectRatio) manifest.project.aspectRatio = cleanText(args.aspectRatio, 12);
     if (args.fps !== undefined) manifest.project.fps = positiveInteger(args.fps, manifest.project.fps, 1, 120);
     if (args.durationSeconds !== undefined) {
       manifest.project.durationSeconds = positiveInteger(args.durationSeconds, manifest.project.durationSeconds, 1, 3_600);
     }
+    manifest.project.status = "structured";
     return { entityType: "project", entityId: manifest.project.id, tab: "projet" };
   }
 
@@ -141,10 +236,29 @@ function applyOperation(manifest, operation, now) {
       description: cleanText(args.description, 2_000),
       states: [],
       references: [],
+      version: 1,
       createdAt: now(),
+      updatedAt: now(),
     };
     manifest.assets.push(asset);
     return { entityType: "asset", entityId: asset.id, tab: assetType === "location" ? "decors" : "personnages" };
+  }
+
+  if (name === "update_asset") {
+    const assetId = cleanText(args.assetId, 128);
+    const asset = manifest.assets.find((item) => item.id === assetId);
+    if (!asset) fail("L'asset demandé est introuvable.", 404);
+    const nextName = args.name === undefined ? asset.name : cleanText(args.name, 120);
+    const nextDescription = args.description === undefined ? asset.description : cleanText(args.description, 2_000);
+    if (!nextName) fail("Le nom de l'asset ne peut pas être vide.");
+    if (nextName === asset.name && nextDescription === asset.description) {
+      fail("La proposition ne contient aucune modification de l'asset.");
+    }
+    asset.name = nextName;
+    asset.description = nextDescription;
+    asset.version = (Number.isInteger(asset.version) ? asset.version : 1) + 1;
+    asset.updatedAt = now();
+    return { entityType: "asset", entityId: asset.id, tab: asset.type === "location" ? "decors" : "personnages" };
   }
 
   if (name === "create_sequence") {
@@ -178,6 +292,9 @@ function applyOperation(manifest, operation, now) {
       assetIds: Array.isArray(args.assetIds)
         ? args.assetIds.filter((id) => manifest.assets.some((asset) => asset.id === id)).slice(0, 20)
         : [],
+      dialogue: cleanDialogue(args.dialogue),
+      // "continuous" impose que la première frame de ce plan soit la dernière du précédent.
+      continuity: SHOT_CONTINUITIES.has(args.continuity) ? args.continuity : "cut",
       version: 1,
       status: "draft",
       createdAt: now(),
@@ -200,6 +317,11 @@ function applyOperation(manifest, operation, now) {
     if (patch.strategy !== undefined) {
       if (!VISUAL_STRATEGIES.has(patch.strategy)) fail("La stratégie visuelle est inconnue.");
       shot.strategy = patch.strategy;
+    }
+    if (patch.dialogue !== undefined) shot.dialogue = cleanDialogue(patch.dialogue);
+    if (patch.continuity !== undefined) {
+      if (!SHOT_CONTINUITIES.has(patch.continuity)) fail("La continuité doit valoir cut ou continuous.");
+      shot.continuity = patch.continuity;
     }
     shot.version += 1;
     shot.updatedAt = now();
@@ -275,7 +397,7 @@ export function createProductionStore({
   initialState,
   now = () => new Date().toISOString(),
 } = {}) {
-  let manifest = initialState ? clone(initialState) : createEmptyManifest(now);
+  let manifest = normalizeManifest(initialState ? clone(initialState) : createEmptyManifest(now), now);
   let writeChain = Promise.resolve();
 
   const save = async () => {
@@ -296,7 +418,7 @@ export function createProductionStore({
       try {
         const loaded = JSON.parse(await readFile(filePath, "utf8"));
         if (loaded?.schemaVersion !== 1) fail("Le manifeste local utilise une version inconnue.", 500);
-        manifest = loaded;
+        manifest = normalizeManifest(loaded, now);
       } catch (error) {
         if (error?.code !== "ENOENT") throw error;
         await save();
@@ -308,8 +430,140 @@ export function createProductionStore({
       return clone(manifest);
     },
 
+    async attachMedia({
+      id,
+      targetType,
+      targetId,
+      kind = "image",
+      purpose = "reference",
+      url,
+      fileName,
+      mimeType,
+      prompt,
+      provider,
+      model,
+      variantKey = null,
+      parentMediaId = null,
+      width = null,
+      height = null,
+      estimatedCostUsd = 0,
+    } = {}) {
+      if (targetType !== "asset" && targetType !== "shot") {
+        fail("Les médias acceptent uniquement les assets et les plans.");
+      }
+      const cleanTargetId = cleanText(targetId, 128);
+      const target = targetType === "asset"
+        ? manifest.assets.find((item) => item.id === cleanTargetId)
+        : manifest.shots.find((item) => item.id === cleanTargetId);
+      if (!target) fail(targetType === "asset" ? "L'asset demandé est introuvable." : "Le plan demandé est introuvable.", 404);
+      if (kind !== "image" && kind !== "video") fail("Le type de média demandé n'est pas encore pris en charge.");
+      const mediaId = cleanText(id, 160);
+      const mediaUrl = cleanText(url, 500);
+      const storedFileName = cleanText(fileName, 220);
+      const storedMimeType = cleanText(mimeType, 80);
+      if (!mediaId || !mediaUrl || !storedFileName || !storedMimeType) fail("Le média généré est incomplet.");
+      if (manifest.media.some((item) => item.id === mediaId)) fail("Cet identifiant média existe déjà.", 409);
+      const cleanVariantKey = cleanText(variantKey, 80) || null;
+      const cleanParentMediaId = cleanText(parentMediaId, 160) || null;
+      if (cleanParentMediaId) {
+        const parent = manifest.media.find((item) => item.id === cleanParentMediaId);
+        if (!parent || parent.targetType !== targetType || parent.targetId !== target.id || parent.kind !== "image") {
+          fail("La référence source de cette image ciblée est invalide.");
+        }
+      }
+      const variantVersion = cleanVariantKey
+        ? manifest.media.filter((item) => item.targetType === targetType && item.targetId === target.id
+          && item.kind === kind && item.variantKey === cleanVariantKey).length + 1
+        : null;
+      const media = {
+        id: mediaId,
+        targetType,
+        targetId: target.id,
+        kind,
+        purpose: cleanText(purpose, 80) || "reference",
+        url: mediaUrl,
+        fileName: storedFileName,
+        mimeType: storedMimeType,
+        width: Number.isInteger(width) && width > 0 ? width : null,
+        height: Number.isInteger(height) && height > 0 ? height : null,
+        estimatedCostUsd: Number.isFinite(Number(estimatedCostUsd)) ? Math.max(0, Number(estimatedCostUsd)) : 0,
+        prompt: cleanText(prompt, 4_000),
+        provider: cleanText(provider, 80),
+        model: cleanText(model, 160),
+        variantKey: cleanVariantKey,
+        variantVersion,
+        parentMediaId: cleanParentMediaId,
+        version: (Array.isArray(target.references) ? target.references.length : 0) + 1,
+        status: "ready",
+        createdAt: now(),
+      };
+      manifest.media.push(media);
+      if (!Array.isArray(target.references)) target.references = [];
+      target.references.push(media.id);
+      manifest.revision += 1;
+      manifest.updatedAt = now();
+      manifest.activity.push({
+        id: `event_${randomUUID()}`,
+        type: "media_attached",
+        mediaId: media.id,
+        targetType,
+        targetId: target.id,
+        revision: manifest.revision,
+        at: now(),
+      });
+      await save();
+      return { media: clone(media), manifest: clone(manifest) };
+    },
+
+    // Une image devient la référence approuvée de sa cible. Tant que rien n'est
+    // approuvé, les générations retombent sur la dernière version disponible.
+    async approveMedia(mediaId, approved = true, review = null) {
+      const media = manifest.media.find((item) => item.id === cleanText(mediaId, 160));
+      if (!media) fail("Le média demandé est introuvable.", 404);
+      const target = media.targetType === "asset"
+        ? manifest.assets.find((item) => item.id === media.targetId)
+        : manifest.shots.find((item) => item.id === media.targetId);
+      if (!target) fail("La cible du média est introuvable.", 404);
+      if (approved && media.targetType === "asset" && media.purpose === "character_consistency") {
+        const checklist = review && typeof review === "object" && !Array.isArray(review) ? review : {};
+        const missing = ["angles", "postures", "emotions"].filter((item) => checklist[item] !== true);
+        if (missing.length) {
+          fail("Contrôle incomplet : confirmez angles, postures et émotions avant de valider cette référence.");
+        }
+        media.review = { angles: true, postures: true, emotions: true, reviewedAt: now() };
+      }
+      for (const item of manifest.media) {
+        if (item.targetType === media.targetType && item.targetId === media.targetId && item.status === "approved") {
+          item.status = "ready";
+          item.approvedAt = null;
+        }
+      }
+      media.status = approved ? "approved" : "ready";
+      media.approvedAt = approved ? now() : null;
+      target.approvedMediaId = approved ? media.id : null;
+      manifest.revision += 1;
+      manifest.updatedAt = now();
+      manifest.activity.push({
+        id: `event_${randomUUID()}`,
+        type: approved ? "media_approved" : "media_unapproved",
+        mediaId: media.id,
+        targetType: media.targetType,
+        targetId: target.id,
+        revision: manifest.revision,
+        at: now(),
+      });
+      await save();
+      return { media: clone(media), manifest: clone(manifest) };
+    },
+
     async propose(name, args = {}, source = "assistant") {
       if (!OPERATION_NAMES.has(name)) fail("Opération inconnue.");
+      const knownIds = collectKnownIds(manifest);
+      const requestedKey = stableArgsKey(name, args, knownIds);
+      const duplicate = manifest.approvals.find(
+        (item) => item.status === "pending" && stableArgsKey(item.operation.name, item.operation.args, knownIds) === requestedKey,
+      );
+      if (duplicate) return clone(duplicate);
       const approval = {
         id: `approval_${randomUUID()}`,
         operation: { name, args: clone(args) },
@@ -400,12 +654,27 @@ export function summarizeManifest(manifest) {
   return {
     revision: manifest.revision,
     project: manifest.project.id
-      ? { title: manifest.project.title, brief: manifest.project.brief, aspectRatio: manifest.project.aspectRatio, fps: manifest.project.fps, durationSeconds: manifest.project.durationSeconds }
+      ? {
+          title: manifest.project.title,
+          brief: manifest.project.brief,
+          premise: manifest.project.premise,
+          genre: manifest.project.genre,
+          visualStyle: manifest.project.visualStyle,
+          narrativeOutline: manifest.project.narrativeOutline,
+          aspectRatio: manifest.project.aspectRatio,
+          fps: manifest.project.fps,
+          durationSeconds: manifest.project.durationSeconds,
+          status: manifest.project.status,
+        }
       : null,
-    assets: manifest.assets.map(({ id, type, name }) => ({ id, type, name })).slice(0, 40),
+    assets: manifest.assets.map(({ id, type, name, description, version }) => ({ id, type, name, description, version })).slice(0, 40),
+    media: (manifest.media || []).map(({ id, targetType, targetId, kind, purpose, variantKey, variantVersion, parentMediaId, version, url, mimeType, provider, model, status }) => ({ id, targetType, targetId, kind, purpose, variantKey, variantVersion, parentMediaId, version, url, mimeType, provider, model, status })).slice(-80),
     sequences: manifest.sequences.map(({ id, title, order }) => ({ id, title, order })).slice(0, 30),
-    shots: manifest.shots.map(({ id, sequenceId, title, description, durationMs, strategy, version }) => ({
+    shots: manifest.shots.map(({ id, sequenceId, title, description, durationMs, strategy, version, dialogue, continuity, assetIds }) => ({
       id, sequenceId, title, description, durationMs, strategy, version,
+      assetIds: assetIds || [],
+      dialogue: dialogue || [],
+      continuity: continuity || "cut",
     })).slice(0, 50),
     timelineDurationMs: manifest.timeline.durationMs,
     pendingApprovals: manifest.approvals.filter((item) => item.status === "pending").length,

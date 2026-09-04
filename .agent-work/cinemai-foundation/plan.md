@@ -329,3 +329,134 @@ Approuvée le 2026-08-27 par François après revue du premier parcours Gemini.
 - État : `approved`
 - Révision approuvée : 5
 - Autorisation : poursuite de l'implémentation et de la vérification
+
+## Révision 6 — pipeline créatif à portes de validation
+
+Approuvée le 2026-09-02 par François avec la description explicite du workflow cible et
+l'instruction d'organiser une boucle d'exécution toutes les trente minutes jusqu'au
+4 septembre inclus.
+
+### Diagnostic de départ
+
+- `verified` — les fiches personnages et décors actuelles ne contiennent pas encore de médias générés ;
+- `verified` — l'interface associe encore des conversations aux onglets, ce qui donne l'impression
+  que le copilote change de mémoire pendant la navigation ;
+- `verified` — Gemini orchestre des propositions textuelles et des opérations structurées, mais
+  aucun adaptateur image, vidéo ou audio réel n'est branché ;
+- `verified` — le workflow après approbation a été réparé pour demander la suite, mais il lui manque
+  une machine à états explicite et des portes de validation produit.
+
+### Workflow cible approuvé
+
+1. **Idée structurée** — le LLM transforme l'idée en une présentation complète mais concise :
+   prémisse, genre, format, durée, style, personnages, décors et squelette de séquences.
+2. **Validation éditoriale** — l'utilisateur valide ou modifie ces éléments avant toute génération
+   visuelle. Les onglets fournissent du contexte à une conversation LLM unique et persistante.
+3. **Bible visuelle** — génération de planches de cohérence pour chaque personnage (angles,
+   postures, émotions) et chaque décor (angles, lumière, état ou altération), avec validation et
+   régénération ciblées.
+4. **Storyboard éditable** — chaque plan affiche une image et le fragment de scénario correspondant
+   sous la frame. Image et texte disposent chacun d'une action Modifier, d'un historique et d'une
+   régénération locale. Ce jalon est obligatoire avant la vidéo.
+5. **Verrouillage image et vidéo muette** — l'utilisateur peut générer d'abord un plan de contrôle
+   ou tous les plans approuvés. Les clips sont placés dans l'ordre sur la timeline canonique et
+   peuvent être découpés sans modifier leur source.
+6. **Son après image** — dialogues, voix off, bruitages, ambiances et musique sont générés et
+   synchronisés seulement après validation de l'assemblage muet.
+
+### Ordre d'exécution
+
+`conversation unique → idée structurée → contrat image → cohérence personnages → cohérence décors → storyboard → édition ciblée → premier clip muet → génération en lot → assemblage → son → revue finale`
+
+### Contraintes de mise en œuvre
+
+- Le manifeste reste la source de vérité ; chaque média garde fichier, version, prompt, modèle,
+  paramètres, dépendances et provenance.
+- Toute génération facturable affiche une estimation et exige une validation humaine explicite.
+- Les tests utilisent des adaptateurs déterministes ; un appel fournisseur réel reste un test séparé.
+- Une modification locale ne régénère pas implicitement les autres assets ou plans : elle signale
+  les dépendances potentiellement affectées.
+- Les contraintes de durée appartiennent à l'adaptateur fournisseur ; la timeline peut découper
+  non destructivement un clip plus long pour obtenir un plan plus court.
+- Le port `127.0.0.1:8001` reste réservé ; les validations locales utilisent 4176 ou un port libre.
+
+### Cycle autonome demandé
+
+Chaque passage suit strictement : (1) planification et élaboration du plus petit incrément sûr,
+(2) exécution, (3) tests et ajustement lié, (4) revue avec captures si l'interface change,
+(5) mise à jour du checkpoint et choix entre reprise ou continuation. Aucun travail déjà validé
+n'est recommencé et les modifications utilisateur non liées sont préservées.
+
+### Critères d'acceptation
+
+- changer d'onglet ne remplace ni ne réinitialise la conversation LLM ;
+- le projet ne passe à l'édition détaillée qu'après validation de l'idée structurée ;
+- les médias générés sont réellement visibles et récupérables depuis le manifeste ;
+- personnages et décors possèdent une revue de cohérence multi-vues ;
+- chaque frame du storyboard lie image, scénario et actions d'édition indépendantes ;
+- le choix « premier plan » ou « tous les plans » ne porte que sur des frames approuvées ;
+- les clips muets sont ordonnés sur une timeline unique avant toute génération sonore ;
+- les preuves comprennent tests automatisés et captures desktop/mobile inspectées.
+
+### Validation
+
+- État : `approved`
+- Révision approuvée : 6
+- Autorisation : exécution autonome par incréments jusqu'au 2026-09-04 inclus
+
+## Révision 7 — proposition : sélection par keyframes et correction de la boucle de propositions
+
+Proposée le 2026-09-02 par Claude (Cowork) à la demande de François. **En attente d'approbation explicite avant exécution par la boucle autonome.**
+
+### Diagnostic du symptôme signalé
+
+François a observé, en conditions réelles : le fil affiche plusieurs fois de suite
+« 3 propositions préparées pour validation », et deux cartes quasi identiques
+(« Le coup de patte fatal ») restent proposées sans converger vers une décision.
+
+- `verified` — aucune déduplication de propositions n'existe côté serveur : ni `production-store.mjs`
+  ni `server.mjs` ne comparent une nouvelle proposition à celles déjà en attente pour le même
+  emplacement (même plan, même intention). Le test `tests/ui-approval-smoke.mjs` vérifie qu'une
+  requête dupliquée est acceptée (`201`), pas qu'elle est fusionnée ou rejetée.
+- `inferred` — le rappel automatique de Gemini ajouté pour la tâche #21 (reprendre le workflow après
+  validation) peut solliciter à nouveau le modèle alors que des propositions pour la même décision
+  sont encore visibles et non tranchées, produisant des variantes quasi identiques du même choix.
+- `verified` — le format actuel (deux à trois cartes textuelles avec titre + une phrase) oblige
+  l'utilisateur à imaginer le résultat visuel avant de choisir, ce qui ralentit la décision et ne
+  correspond pas à un médium visuel.
+
+### Changement de workflow demandé
+
+Remplacer la proposition textuelle d'une action de personnage par une proposition en images :
+pour une intention donnée (ex. « le coup de patte fatal »), générer directement une ou deux
+images-clés (« keyframes ») montrant le personnage en train de l'exécuter, et laisser
+l'utilisateur choisir l'image plutôt qu'un texte.
+
+### Contraintes à respecter dans l'implémentation
+
+- Ce mode keyframe ne peut s'appliquer qu'à un personnage (ou décor) déjà doté d'une planche de
+  cohérence approuvée (tâche #25/#26) : sans référence visuelle validée, une image générée à ce
+  stade serait incohérente avec le reste du film et devrait être régénérée plus tard.
+- Chaque image-clé alternative est un appel de génération facturable : limiter à deux alternatives
+  par défaut (pas trois), afficher le coût estimé total avant de lancer les deux en parallèle, et
+  exiger la même confirmation explicite que le contrat d'image existant (tâche #24).
+- Le mode texte simple reste la voie par défaut pour les décisions non visuelles (dialogue, ordre
+  des séquences, changement de format) : le nouveau mode keyframe ne remplace la proposition
+  textuelle que pour les décisions dont l'objet est une pose, une action ou un cadrage.
+- Corriger la boucle indépendamment du choix ci-dessus : le serveur doit reconnaître qu'une
+  décision (même emplacement narratif) a déjà une ou plusieurs propositions non tranchées en
+  attente et ne pas en solliciter de nouvelles pour le même point tant que l'utilisateur n'a pas
+  validé, écarté, ou explicitement demandé « Proposer autre chose ». Le rappel automatique de
+  Gemini (#21) doit vérifier cet état avant de relancer un appel.
+
+### Impact sur l'ordre existant
+
+Complète les tâches #25 à #28 sans changer leur ordre : la porte « bible visuelle » doit être
+franchie avant qu'un plan individuel puisse proposer des keyframes d'action. Ajoute une tâche
+#34 (correction de la boucle de propositions, prioritaire, bloquante) et une tâche #35 (sélection
+par keyframes pour les propositions d'action/pose), toutes deux ajoutées à `TASKS.md`.
+
+### Validation
+
+- État : `proposed`
+- Nécessite l'approbation explicite de François avant que la boucle autonome ne l'exécute.

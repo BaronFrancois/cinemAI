@@ -3,12 +3,12 @@ objective: >-
   Définir puis construire un prototype local capable de décrire une séquence de cinq plans,
   modifier un seul plan ou segment et prouver que les autres plans ainsi que les références
   de continuité restent inchangés.
-status: verifying
-plan_revision: 5
-approved_revision: 5
+status: executing
+plan_revision: 6
+approved_revision: 6
 owner: codex
 created_at: 2026-08-20T20:56:41+02:00
-updated_at: 2026-08-27T12:00:00+02:00
+updated_at: 2026-09-02T16:58:00+02:00
 scope:
   - Contrat produit du MVP CinemAI Continuum
   - Production Manifest local et versionné
@@ -28,6 +28,11 @@ acceptance:
   - Les dépendances de continuité affectées sont listées explicitement
   - Le parcours est reproductible localement par une commande documentée
   - Les pistes vidéo et audio proviennent d'une timeline canonique unique
+  - Les onglets ne changent jamais de conversation LLM et servent uniquement de contexte
+  - Une idée structurée doit être validée avant les éditions de détail et les générations visuelles
+  - Chaque personnage et décor dispose d'une revue de cohérence multi-vues
+  - Chaque frame du storyboard associe image, scénario et édition ciblée indépendante
+  - Les clips vidéo muets sont validés et assemblés avant toute génération sonore
   - La premiere reponse presente deux choix maximum, puis trois maximum une fois le projet cadre
   - Les choix sont des cartes lisibles avec format et duree ajustables avant validation
   - Le design Odyssey valide reste la structure visuelle de reference sur desktop et mobile
@@ -39,3 +44,4 @@ constraints:
   - Clé Google lisible uniquement par le serveur local
   - Une requête réelle minimale autorisée pour valider Flash 3.5
   - Aucune génération image, vidéo ou audio facturable sans validation humaine explicite
+  - Le port local 127.0.0.1:8001 reste réservé et ne doit pas être utilisé

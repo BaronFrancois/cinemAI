@@ -1,16 +1,21 @@
 export const GEMINI_FUNCTION_DECLARATIONS = [
   {
     name: "set_project",
-    description: "Proposer le titre, le brief ou les paramètres globaux du projet. Ne l'applique pas sans validation humaine.",
+    description: "Présenter l'idée sous une forme structurée complète avant tout asset ou plan. Cette proposition constitue la porte de validation éditoriale et ne s'applique jamais sans validation humaine.",
     parameters: {
       type: "object",
       properties: {
         title: { type: "string", description: "Titre du projet." },
         brief: { type: "string", description: "Intention et contraintes du projet." },
+        premise: { type: "string", description: "Prémisse claire en une ou deux phrases." },
+        genre: { type: "string", description: "Genre et tonalité." },
+        visualStyle: { type: "string", description: "Direction visuelle proposée." },
+        narrativeOutline: { type: "string", description: "Squelette narratif concis, sans détailler encore tous les plans." },
         aspectRatio: { type: "string", description: "Format visuel, par exemple 16:9 ou 9:16." },
         fps: { type: "integer", description: "Cadence cible." },
         durationSeconds: { type: "integer", description: "Durée totale cible en secondes." },
       },
+      required: ["title", "premise", "genre", "visualStyle", "narrativeOutline"],
     },
   },
   {
@@ -24,6 +29,19 @@ export const GEMINI_FUNCTION_DECLARATIONS = [
         description: { type: "string" },
       },
       required: ["assetType", "name"],
+    },
+  },
+  {
+    name: "update_asset",
+    description: "Proposer une modification ciblée d'un personnage, décor, accessoire ou style existant sans créer de doublon et sans toucher à ses médias validés.",
+    parameters: {
+      type: "object",
+      properties: {
+        assetId: { type: "string", description: "Identifiant exact d'un asset présent dans l'état courant." },
+        name: { type: "string", description: "Nouveau nom, uniquement si l'utilisateur demande de le changer." },
+        description: { type: "string", description: "Nouvelle description complète intégrant la correction demandée." },
+      },
+      required: ["assetId"],
     },
   },
   {
@@ -47,6 +65,20 @@ export const GEMINI_FUNCTION_DECLARATIONS = [
         durationMs: { type: "integer" },
         strategy: { type: "string", enum: ["image", "first_last_video", "micro_video", "image_sequence", "interpolation"] },
         assetIds: { type: "array", items: { type: "string" } },
+        dialogue: {
+          type: "array",
+          description: "Répliques prononcées à l'image. À décider avant la génération vidéo : la synchronisation labiale est produite avec l'image et n'est pas ajoutable après.",
+          items: {
+            type: "object",
+            properties: { speaker: { type: "string" }, line: { type: "string" } },
+            required: ["line"],
+          },
+        },
+        continuity: {
+          type: "string",
+          enum: ["cut", "continuous"],
+          description: "\"continuous\" impose que la première image de ce plan soit la dernière du plan précédent. \"cut\" pour une coupe franche.",
+        },
       },
       required: ["description"],
     },
@@ -65,6 +97,20 @@ export const GEMINI_FUNCTION_DECLARATIONS = [
             description: { type: "string" },
             durationMs: { type: "integer" },
             strategy: { type: "string", enum: ["image", "first_last_video", "micro_video", "image_sequence", "interpolation"] },
+            dialogue: {
+              type: "array",
+              description: "Répliques prononcées à l'image. À décider avant la génération vidéo : la synchronisation labiale est produite avec l'image et n'est pas ajoutable après.",
+              items: {
+                type: "object",
+                properties: { speaker: { type: "string" }, line: { type: "string" } },
+                required: ["line"],
+              },
+            },
+            continuity: {
+              type: "string",
+              enum: ["cut", "continuous"],
+              description: "\"continuous\" impose que la première image de ce plan soit la dernière du plan précédent. \"cut\" pour une coupe franche.",
+            },
           },
         },
       },

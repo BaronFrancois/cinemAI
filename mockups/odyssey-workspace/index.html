@@ -2506,7 +2506,7 @@
             var v = parseFloat(getComputedStyle(root).getPropertyValue("--split"));
             return isNaN(v) ? 50 : v;
           };
-          set(50);
+          set(0);
 
           var dragging = false;
           var handle = document.getElementById("split-handle");
@@ -3075,29 +3075,40 @@
           var sendButton = document.querySelector(".composer .send");
           var composer = document.querySelector(".composer");
           var placeholder = "Décrivez ce que vous voulez créer ou modifier…";
-          var chatHistory = {};
+          var chatHistory = [];
           var sending = false;
-          var submitChat = async function () {
+          var submitChat = async function (messageOverride, settings) {
             if (!input || sending) return;
-            var txt = input.textContent.trim();
-            if (!txt || input.classList.contains("empty")) return;
+            var options = settings && typeof settings === "object" ? settings : {};
+            var silent = options.silent === true;
+            var txt = typeof messageOverride === "string" ? messageOverride.trim() : input.textContent.trim();
+            if (!txt || (typeof messageOverride !== "string" && input.classList.contains("empty"))) return;
             var thread = document.querySelector("[data-thread]:not(.off)");
             if (!thread) return;
             var tab = thread.getAttribute("data-thread");
-            var mine = document.createElement("div");
-            mine.className = "msg";
-            mine.style.justifyContent = "flex-end";
-            mine.innerHTML = '<div class="bubble" style="max-width:78%"></div><span class="av">F</span>';
-            mine.querySelector(".bubble").textContent = txt;
-            thread.appendChild(mine);
+            if (!silent) {
+              var mine = document.createElement("div");
+              mine.className = "msg";
+              mine.style.justifyContent = "flex-end";
+              mine.innerHTML = '<div class="bubble" style="max-width:78%"></div><span class="av">F</span>';
+              mine.querySelector(".bubble").textContent = txt;
+              thread.appendChild(mine);
+              if (window.CinemAIBridge && typeof window.CinemAIBridge.resetAutoContinue === "function") {
+                window.CinemAIBridge.resetAutoContinue();
+              }
+            }
             var wait = document.createElement("div");
-            wait.className = "msg";
-            wait.innerHTML = '<span class="av av-ai">✦</span><div class="typing"><i></i><i></i><i></i></div>';
+            wait.className = "msg" + (silent ? " workflow-continuation" : "");
+            wait.innerHTML = silent
+              ? '<span class="av av-ai">✦</span><div class="fx col gap6"><p class="prose">Proposition enregistrée. Je prépare la suite du workflow…</p><div class="typing"><i></i><i></i><i></i></div></div>'
+              : '<span class="av av-ai">✦</span><div class="typing"><i></i><i></i><i></i></div>';
             thread.appendChild(wait);
             thread.scrollTop = thread.scrollHeight;
-            input.textContent = placeholder;
-            input.classList.add("empty");
-            input.blur();
+            if (!silent) {
+              input.textContent = placeholder;
+              input.classList.add("empty");
+              input.blur();
+            }
             sending = true;
             input.setAttribute("aria-disabled", "true");
             input.setAttribute("contenteditable", "false");
@@ -3114,7 +3125,8 @@
                   body: JSON.stringify({
                     tab: tab,
                     message: txt,
-                    history: (chatHistory[tab] || []).slice(-8)
+                    history: chatHistory.slice(-8),
+                    workflowContinuation: silent
                   }),
                   signal: controller.signal
                 });
@@ -3127,9 +3139,8 @@
               wait.querySelector(".prose").textContent = payload.text;
               wait.querySelector(".chat-source").textContent = payload.mode === "mock" ? "Simulation locale" : payload.model;
               if (window.CinemAIBridge) window.CinemAIBridge.handleResponse(payload, tab, thread);
-              var history = chatHistory[tab] || [];
-              history.push({ role: "user", text: txt }, { role: "model", text: payload.text });
-              chatHistory[tab] = history.slice(-8);
+              chatHistory.push({ role: "user", text: txt }, { role: "model", text: payload.text });
+              chatHistory = chatHistory.slice(-8);
             } catch (error) {
               var message = error && error.name === "AbortError"
                 ? "Le serveur met trop de temps à répondre. Réessayez."
@@ -3143,6 +3154,11 @@
               if (sendButton) sendButton.disabled = false;
               if (composer) composer.classList.remove("sending");
               thread.scrollTop = thread.scrollHeight;
+            }
+          };
+          window.CinemAIChat = {
+            continueWorkflow: function (message) {
+              return submitChat(message || "Continue le workflow à partir du manifeste actuel.", { silent: true });
             }
           };
           if (input) {

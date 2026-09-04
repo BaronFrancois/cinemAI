@@ -15,3 +15,6 @@ coverage/
 data/
 *.zip
 tests/cinemai-workspace-*.png
+
+# Binaire compile localement par tools/README.md
+tools/extract-frame

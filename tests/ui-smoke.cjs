@@ -18,20 +18,19 @@ async function exerciseViewport(browser, name, viewport, useButton) {
 
   await page.goto(baseUrl, { waitUntil: "networkidle" });
   for (const tab of tabs) {
-    await page.locator(`.rail-item[data-tab="${tab}"]`).click();
+    await page.locator(`.project-workflow [data-context-tab="${tab}"]`).click();
     const input = page.locator("#composer-input");
     await input.fill(`Vérification ${name} ${tab}`);
     if (useButton) await page.locator(".composer .send").click();
     else await input.press("Enter");
-    const thread = page.locator(`[data-thread="${tab}"]`);
-    await thread.locator(".chat-source", { hasText: "Simulation locale" }).last().waitFor();
+    await page.locator(".chat-source", { hasText: "Simulation locale" }).last().waitFor();
     await assert.doesNotReject(() => page.locator(".composer .send").isEnabled());
   }
 
   // Re-open the active workspace after the final assistant interaction. On
   // mobile, composing intentionally scrolls to the assistant below the view.
-  await page.locator('.rail-item[data-tab="export"]').click();
-  await page.locator('.panes-host > [data-tab="export"] h1', { hasText: "Export" }).waitFor();
+  await page.locator('.project-workflow [data-context-tab="export"]').click();
+  await page.locator('.export-workspace h2', { hasText: "Exporter le film" }).waitFor();
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   assert.equal(overflow, false, `${name}: débordement horizontal`);
