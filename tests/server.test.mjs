@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { buildConfig, buildShotVideoPrompt, callGeminiImage, callOmniVideo, chainDepthBefore, createCinemaiServer } from "../server.mjs";
+import { buildConfig, buildShotVideoPrompt, callGeminiImage, callOmniVideo, chainDepthBefore, createCinemaiServer, frameExtractorCommand } from "../server.mjs";
 import { createProductionStore } from "../production-store.mjs";
 
 async function withServer(config, run, options = {}) {
@@ -1168,4 +1168,21 @@ test("chain depth stops at a cut and at an unanimated shot", async () => {
   assert.equal(chainDepthBefore(full, shots, 4), 1);
   // Un plan précédent non animé interrompt aussi la chaîne.
   assert.equal(chainDepthBefore({ media: [clip("s1")] }, shots, 2), 0);
+});
+
+test("frame extraction prefers ffmpeg, falls back to the macOS tool, else gives up", () => {
+  // ffmpeg disponible : c'est lui qui gagne, même si l'outil Swift existe.
+  const withFfmpeg = frameExtractorCommand("/clip.mp4", "/out.jpg", { ffmpegPath: "/usr/bin/ffmpeg", hasSwiftTool: true });
+  assert.equal(withFfmpeg.file, "/usr/bin/ffmpeg");
+  assert.ok(withFfmpeg.args.includes("-sseof"), "doit reculer depuis la fin du fichier");
+  assert.equal(withFfmpeg.args.at(-1), "/out.jpg");
+  assert.ok(withFfmpeg.args.includes("/clip.mp4"));
+
+  // Sans ffmpeg, l'outil macOS prend le relais en développement.
+  const swiftOnly = frameExtractorCommand("/clip.mp4", "/out.jpg", { hasSwiftTool: true });
+  assert.match(swiftOnly.file, /tools\/extract-frame$/);
+  assert.deepEqual(swiftOnly.args, ["/clip.mp4", "/out.jpg"]);
+
+  // Aucun des deux : on renvoie null pour retomber sur la keyframe.
+  assert.equal(frameExtractorCommand("/clip.mp4", "/out.jpg", {}), null);
 });

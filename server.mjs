@@ -501,16 +501,43 @@ export async function callGeminiImage({ config, asset, imageRequest, referenceIm
 // Omni ne prend pas de champs nommés pour les frames : les images sont une liste
 // ordonnée et c'est le texte qui déclare le rôle de chacune.
 const execFileAsync = promisify(execFile);
-const FRAME_EXTRACTOR = resolve(PROJECT_ROOT, "tools", "extract-frame");
+const SWIFT_EXTRACTOR = resolve(PROJECT_ROOT, "tools", "extract-frame");
+
+// Deux façons d'extraire une image d'un clip. ffmpeg fonctionne partout, y
+// compris sur les hébergeurs Linux ; l'outil Swift ne fonctionne que sur macOS
+// mais évite d'installer quoi que ce soit en développement. On préfère ffmpeg
+// dès qu'il est disponible, pour que le comportement local soit celui de la
+// production.
+export function frameExtractorCommand(videoPath, outPath, { ffmpegPath, hasSwiftTool } = {}) {
+  if (ffmpegPath) {
+    // -sseof recule depuis la fin du fichier : la dernière image décodable.
+    return { file: ffmpegPath, args: ["-y", "-sseof", "-0.2", "-i", videoPath, "-frames:v", "1", "-q:v", "2", outPath] };
+  }
+  if (hasSwiftTool) return { file: SWIFT_EXTRACTOR, args: [videoPath, outPath] };
+  return null;
+}
+
+async function resolveFfmpeg(explicitPath) {
+  if (explicitPath) return explicitPath;
+  try {
+    const { stdout } = await execFileAsync("which", ["ffmpeg"], { timeout: 5_000 });
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
 
 // Extrait la dernière image d'un clip pour la donner en frame de départ du plan
 // suivant : le raccord est alors exact, puisque c'est littéralement la même
-// image. Dépend d'AVFoundation via tools/extract-frame ; si le binaire n'a pas
-// été compilé, on retombe sur la keyframe du plan plutôt que d'échouer.
-export async function extractLastFrame(videoPath) {
+// image. Sans outil disponible, on retombe sur la keyframe plutôt qu'échouer.
+export async function extractLastFrame(videoPath, { ffmpegPath } = {}) {
   const outPath = resolve(tmpdir(), `cinemai-chain-${randomUUID()}.jpg`);
+  const ffmpeg = await resolveFfmpeg(ffmpegPath || process.env.CINEMAI_FFMPEG_PATH);
+  const hasSwiftTool = await readFile(SWIFT_EXTRACTOR).then(() => true, () => false);
+  const command = frameExtractorCommand(videoPath, outPath, { ffmpegPath: ffmpeg, hasSwiftTool });
+  if (!command) return null;
   try {
-    await execFileAsync(FRAME_EXTRACTOR, [videoPath, outPath], { timeout: 30_000 });
+    await execFileAsync(command.file, command.args, { timeout: 60_000 });
     const bytes = await readFile(outPath);
     await unlink(outPath).catch(() => {});
     return bytes.length ? { mimeType: "image/jpeg", data: bytes.toString("base64") } : null;
