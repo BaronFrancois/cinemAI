@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import { createProductionStore, summarizeManifest } from "./production-store.mjs";
 import { clickhouseConfig } from "./clickhouse.mjs";
 import { clickhouseMcpEnv, createMcpClient } from "./mcp-client.mjs";
+import { createVertexAuth, vertexConfig, vertexEndpoint } from "./vertex-auth.mjs";
 import {
   ANALYTICS_FUNCTION_DECLARATIONS,
   ANALYTICS_TOOL_NAMES,
@@ -791,9 +792,19 @@ export async function callGemini({
   workflowContinuation = false,
   fetchImpl = fetch,
   analytics = null,
+  vertex = null,
   maxAnalyticsRounds = 5,
 }) {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`;
+  // Vertex AI est l'entrée Google Cloud vers les mêmes modèles : l'agent y
+  // passe, authentifié par compte de service plutôt que par clé d'API. La
+  // génération d'images et de vidéos reste sur l'API Developer, Omni n'étant
+  // pas publié sur Vertex.
+  const endpoint = vertex
+    ? vertexEndpoint({ project: vertex.project, location: vertex.location }, config.model)
+    : `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`;
+  const authHeaders = vertex
+    ? { Authorization: `Bearer ${await vertex.accessToken()}` }
+    : { "x-goog-api-key": config.apiKey };
   const contents = history.map((item) => ({ role: item.role, parts: [{ text: item.text }] }));
   contents.push({ role: "user", parts: [{ text: message }] });
   const declarations = analytics
@@ -805,7 +816,7 @@ export async function callGemini({
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-goog-api-key": config.apiKey,
+        ...authHeaders,
       },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemInstruction(tab, manifestSummary) }] },
@@ -969,6 +980,7 @@ export function createCinemaiServer({
   store = createProductionStore({ persist: false }),
   extractFrame = extractLastFrame,
   analytics = null,
+  vertex = null,
 } = {}) {
   if (!config) throw new Error("Configuration serveur manquante.");
   return createHttpServer(async (request, response) => {
@@ -1360,6 +1372,7 @@ export function createCinemaiServer({
           ? { text: MOCK_REPLIES[payload.tab], usage: null, functionCalls: [] }
           : await callGemini({
               analytics,
+              vertex,
               config,
               ...payload,
               manifestSummary: summarizeManifest(manifestBeforeChat),
@@ -1441,7 +1454,8 @@ export async function startFromEnvironment() {
       }
     };
   }
-  const server = createCinemaiServer({ config, store, mediaDir: resolve(dataDir, "media"), analytics });
+  const vertex = createVertexAuth({ config: vertexConfig(values) });
+  const server = createCinemaiServer({ config, store, mediaDir: resolve(dataDir, "media"), analytics, vertex });
   await new Promise((resolveListen, rejectListen) => {
     server.once("error", rejectListen);
     server.listen(config.port, config.host, resolveListen);
@@ -1449,7 +1463,7 @@ export async function startFromEnvironment() {
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : config.port;
   console.log(`CinemAI : http://${config.host}:${port}`);
-  console.log(`LLM : ${config.mode} · ${config.model}`);
+  console.log(`LLM : ${config.mode} · ${config.model} · ${vertex ? `Vertex AI (${vertex.project}/${vertex.location})` : "API Developer"}`);
   console.log(`Données : ${dataDir}`);
   return server;
 }

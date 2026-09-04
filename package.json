@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test tests/server.test.mjs tests/production-store.test.mjs tests/clickhouse.test.mjs tests/mcp-client.test.mjs"
+    "test": "node --test tests/server.test.mjs tests/production-store.test.mjs tests/clickhouse.test.mjs tests/mcp-client.test.mjs tests/vertex-auth.test.mjs"
   },
   "engines": {
     "node": ">=20"
