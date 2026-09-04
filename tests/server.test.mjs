@@ -1186,3 +1186,37 @@ test("frame extraction prefers ffmpeg, falls back to the macOS tool, else gives 
   // Aucun des deux : on renvoie null pour retomber sur la keyframe.
   assert.equal(frameExtractorCommand("/clip.mp4", "/out.jpg", {}), null);
 });
+
+test("a generated clip carries its cost, priced per generated second", async () => {
+  const mediaDir = await mkdtemp(resolve(tmpdir(), "cinemai-cost-"));
+  const store = createProductionStore({ persist: false });
+  const project = await store.propose("set_project", { title: "Coût" }, "test");
+  await store.decide(project.id, "approve");
+  const shotProposal = await store.propose("create_shot", {
+    title: "Plan", description: "Action.", durationMs: 6_000,
+  }, "test");
+  const shotId = (await store.decide(shotProposal.id, "approve")).approval.result.entityId;
+  try {
+    // En simulation, aucune dépense n'est imputée.
+    await withServer(mockConfig, async (baseUrl) => {
+      await fetch(`${baseUrl}/api/shots/${shotId}/images/generate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "GENERATE_IMAGE" }),
+      });
+      const clip = await fetch(`${baseUrl}/api/shots/${shotId}/videos/generate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "GENERATE_VIDEO" }),
+      }).then((r) => r.json());
+      assert.equal(clip.seconds, 6);
+      assert.equal(clip.media.estimatedCostUsd, 0, "le mode simulation ne coûte rien");
+    }, { store, mediaDir });
+
+    assert.equal(
+      buildConfig({ CINEMAI_LLM_MODE: "mock", CINEMAI_VIDEO_COST_USD_PER_SECOND: "0.2" }).videoCostUsdPerSecond,
+      0.2,
+    );
+    assert.throws(() => buildConfig({ CINEMAI_LLM_MODE: "mock", CINEMAI_VIDEO_COST_USD_PER_SECOND: "-1" }), /positif/);
+  } finally {
+    await rm(mediaDir, { recursive: true, force: true });
+  }
+});

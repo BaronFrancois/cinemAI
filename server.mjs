@@ -161,6 +161,10 @@ export function buildConfig(values = {}) {
   if (!Number.isFinite(videoPollIntervalMs) || videoPollIntervalMs < 1_000 || videoPollIntervalMs > 60_000) {
     throw new Error("CINEMAI_VIDEO_POLL_MS doit être compris entre 1000 et 60000.");
   }
+  const videoCostUsdPerSecond = Number(values.CINEMAI_VIDEO_COST_USD_PER_SECOND ?? 0.15);
+  if (!Number.isFinite(videoCostUsdPerSecond) || videoCostUsdPerSecond < 0 || videoCostUsdPerSecond > 100) {
+    throw new Error("CINEMAI_VIDEO_COST_USD_PER_SECOND doit être un montant positif raisonnable.");
+  }
   const chainMaxLinks = Number(values.CINEMAI_CHAIN_MAX_LINKS ?? 3);
   if (!Number.isInteger(chainMaxLinks) || chainMaxLinks < 0 || chainMaxLinks > 20) {
     throw new Error("CINEMAI_CHAIN_MAX_LINKS doit être un entier entre 0 et 20.");
@@ -187,6 +191,7 @@ export function buildConfig(values = {}) {
     omniModel,
     videoPollIntervalMs,
     videoMaxWaitMs,
+    videoCostUsdPerSecond,
     chainMaxLinks,
     imageCostsUsd,
     apiKey,
@@ -1106,6 +1111,9 @@ export function createCinemaiServer({
             targetId: shot.id,
             kind: "video",
             purpose: "clip",
+            // Sans coût renseigné, un clip pesait 0 dans la télémétrie alors
+            // qu'il est la génération la plus chère du pipeline.
+            estimatedCostUsd: config.mode === "google" ? seconds * (config.videoCostUsdPerSecond ?? 0) : 0,
             url: `/api/media/${encodeURIComponent(mediaId)}`,
             fileName,
             mimeType: generated.mimeType,
