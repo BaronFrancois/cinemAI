@@ -23,6 +23,12 @@
     fileName: ""
   };
   var AUTO_CONTINUE_LIMIT = 1;
+  // Lecteur d'animatique : enchaîne les keyframes validées à la durée réelle des
+  // plans. Aucun appel de génération, donc aucun coût — c'est tout l'intérêt :
+  // valider rythme, lisibilité et continuité avant de payer une vidéo.
+  var animaticTimer = null;
+  var animaticIndex = 0;
+  var animaticPlaying = false;
   var trackLabels = {
     visual: "Image / vidéo",
     dialogue: "Dialogues",
@@ -474,6 +480,106 @@
       compactSection("Historique des versions", assetHistory(chosen), chosen ? chosen.name : "");
   }
 
+  function animaticFrames() {
+    return (state.shots || []).map(function (shot, index) {
+      var media = mediaForShot(shot.id).filter(function (item) { return item.kind === "image"; });
+      var image = media.find(isMediaApproved) || media[media.length - 1] || null;
+      return {
+        index: index,
+        title: shot.title || "Plan sans titre",
+        description: shot.description || "",
+        durationMs: Math.max(400, shot.durationMs || 4000),
+        continuity: shot.continuity || "cut",
+        url: image ? image.url : null,
+        approved: image ? isMediaApproved(image) : false
+      };
+    });
+  }
+
+  function animaticMarkup(frames) {
+    var total = frames.reduce(function (sum, frame) { return sum + frame.durationMs; }, 0);
+    var missing = frames.filter(function (frame) { return !frame.url; }).length;
+    var strip = frames.map(function (frame) {
+      return '<button type="button" class="animatic-thumb" data-animatic-go="' + frame.index + '" title="' + escapeHtml(frame.title) + '">' +
+        (frame.url ? '<img src="' + escapeHtml(frame.url) + '" alt="">' : '<span class="animatic-thumb-empty">◇</span>') +
+        '<small>' + String(frame.index + 1).padStart(2, "0") + '</small></button>';
+    }).join("");
+    return '<header class="workspace-panel-head"><div><span class="field-label">Animatique</span>' +
+      '<h2>Storyboard animé</h2><p class="hint">' + frames.length + ' plans · ' + Math.round(total / 100) / 10 + ' s' +
+      (missing ? ' · ' + missing + ' plan' + (missing > 1 ? 's' : '') + ' sans image' : '') + ' · aucune génération, aucun coût</p></div>' +
+      '<div class="asset-review-head-actions"><button type="button" class="workspace-expand" data-workspace-fullscreen aria-pressed="false">Plein écran</button>' +
+      '<button type="button" class="workspace-close" data-close-workspace aria-label="Fermer">×</button></div></header>' +
+      // Les commandes passent avant la scène : le panneau est court et le bouton
+      // Lire ne doit jamais demander de faire défiler.
+      '<div class="animatic-controls">' +
+      '<button type="button" class="choice-action" data-animatic-step="-1">◀</button>' +
+      '<button type="button" class="choice-action primary" data-animatic-toggle>Lire</button>' +
+      '<button type="button" class="choice-action" data-animatic-step="1">▶</button>' +
+      '<div class="animatic-progress"><span data-animatic-bar></span></div></div>' +
+      '<div class="animatic-stage" data-animatic-stage></div>' +
+      '<div class="animatic-meta" data-animatic-meta></div>' +
+      '<div class="animatic-strip">' + strip + '</div>';
+  }
+
+  function paintAnimatic() {
+    var frames = animaticFrames();
+    var stage = document.querySelector("[data-animatic-stage]");
+    if (!stage || !frames.length) return;
+    if (animaticIndex >= frames.length) animaticIndex = 0;
+    var frame = frames[animaticIndex];
+    stage.innerHTML = frame.url
+      ? '<img src="' + escapeHtml(frame.url) + '" alt="' + escapeHtml(frame.title) + '">'
+      : '<div class="animatic-missing"><span>◇</span><p>Aucune image validée pour ce plan.</p></div>';
+    var meta = document.querySelector("[data-animatic-meta]");
+    if (meta) {
+      meta.innerHTML = '<strong>' + String(frame.index + 1).padStart(2, "0") + ' · ' + escapeHtml(frame.title) + '</strong>' +
+        '<span class="hint">' + Math.round(frame.durationMs / 100) / 10 + ' s · ' +
+        (frame.continuity === "continuous" ? "raccord continu" : "coupe") +
+        (frame.url ? (frame.approved ? " · image validée" : " · image non validée") : " · image manquante") + '</span>' +
+        (frame.description ? '<p class="prose">' + escapeHtml(frame.description) + '</p>' : '');
+    }
+    var bar = document.querySelector("[data-animatic-bar]");
+    if (bar) bar.style.width = Math.round(((animaticIndex + 1) / frames.length) * 100) + "%";
+    document.querySelectorAll("[data-animatic-go]").forEach(function (node) {
+      node.classList.toggle("on", Number(node.getAttribute("data-animatic-go")) === animaticIndex);
+    });
+    var toggle = document.querySelector("[data-animatic-toggle]");
+    if (toggle) toggle.textContent = animaticPlaying ? "Pause" : "Lire";
+  }
+
+  function stopAnimatic() {
+    if (animaticTimer) clearTimeout(animaticTimer);
+    animaticTimer = null;
+    animaticPlaying = false;
+  }
+
+  function advanceAnimatic() {
+    var frames = animaticFrames();
+    if (!frames.length) return stopAnimatic();
+    // Chaque plan reste à l'écran exactement sa durée : c'est ce qui rend le
+    // rythme jugeable avant toute génération.
+    animaticTimer = setTimeout(function () {
+      animaticIndex += 1;
+      if (animaticIndex >= frames.length) {
+        animaticIndex = frames.length - 1;
+        stopAnimatic();
+        paintAnimatic();
+        return;
+      }
+      paintAnimatic();
+      advanceAnimatic();
+    }, frames[animaticIndex].durationMs);
+  }
+
+  function openAnimatic() {
+    var frames = animaticFrames();
+    if (!frames.length) return;
+    stopAnimatic();
+    animaticIndex = 0;
+    showWorkspacePanel(animaticMarkup(frames), "animatic", "Storyboard · animatique");
+    paintAnimatic();
+  }
+
   function storyboardContext() {
     var shots = state.shots || [];
     return compactSection("Plans du storyboard", shots.length ? '<div class="context-shot-list">' + shots.map(function (shot, index) {
@@ -482,7 +588,9 @@
       return '<button type="button" data-context-tab="script"><span>' + String(index + 1).padStart(2, "0") + '</span>' +
         (image ? '<img src="' + escapeHtml(image.url) + '" alt="' + escapeHtml(shot.title) + '">' : '') +
         '<strong>' + escapeHtml(shot.title || "Plan sans titre") + '</strong><small>' + Math.round((shot.durationMs || 0) / 100) / 10 + ' s</small></button>';
-    }).join("") + '</div>' : '<p class="context-empty-copy">Le storyboard n’a pas encore de plan.</p>', shots.length + " plan" + (shots.length > 1 ? "s" : ""));
+    }).join("") + '</div>' +
+      '<button type="button" class="context-primary-action" data-open-animatic>Lire l’animatique — sans coût</button>'
+      : '<p class="context-empty-copy">Le storyboard n’a pas encore de plan.</p>', shots.length + " plan" + (shots.length > 1 ? "s" : ""));
   }
 
   function videoContext() {
@@ -614,6 +722,7 @@
   }
 
   function closeWorkspacePanel() {
+    stopAnimatic();
     var conversation = conversationPane();
     var panel = workspacePanel();
     workspaceMode = "conversation";
@@ -957,6 +1066,39 @@
       if (tab === "export") renderExportWorkspace();
       else closeWorkspacePanel();
       setTimeout(function () { unifyConversationSurface(); renderApprovals(activeThread()); }, 0);
+      return;
+    }
+    if (event.target.closest("[data-open-animatic]")) {
+      openAnimatic();
+      return;
+    }
+    var animaticGo = event.target.closest("[data-animatic-go]");
+    if (animaticGo) {
+      stopAnimatic();
+      animaticIndex = Number(animaticGo.getAttribute("data-animatic-go")) || 0;
+      paintAnimatic();
+      return;
+    }
+    var animaticStep = event.target.closest("[data-animatic-step]");
+    if (animaticStep) {
+      var frames = animaticFrames();
+      stopAnimatic();
+      animaticIndex = Math.min(frames.length - 1, Math.max(0, animaticIndex + Number(animaticStep.getAttribute("data-animatic-step"))));
+      paintAnimatic();
+      return;
+    }
+    if (event.target.closest("[data-animatic-toggle]")) {
+      if (animaticPlaying) {
+        stopAnimatic();
+      } else {
+        var total = animaticFrames();
+        if (!total.length) return;
+        // Relancer depuis la fin repart du début plutôt que de rester bloqué.
+        if (animaticIndex >= total.length - 1) animaticIndex = 0;
+        animaticPlaying = true;
+        advanceAnimatic();
+      }
+      paintAnimatic();
       return;
     }
     var openAsset = event.target.closest("[data-open-asset]");
