@@ -316,3 +316,37 @@ test("shots carry dialogue and continuity, and legacy shots get safe defaults", 
   assert.deepEqual(revivedShot.dialogue, []);
   assert.equal(revivedShot.continuity, "cut");
 });
+
+test("shots can be duplicated, deleted recoverably and reordered", async () => {
+  const store = createProductionStore({ persist: false });
+  await approve(store, "set_project", { title: "Montage" });
+  const a = (await approve(store, "create_shot", { title: "Un", description: "Plan un", durationMs: 2_000 })).approval.result.entityId;
+  const b = (await approve(store, "create_shot", { title: "Deux", description: "Plan deux", durationMs: 3_000 })).approval.result.entityId;
+  const titles = () => store.snapshot().shots.map((shot) => shot.title);
+  const visual = () => store.snapshot().timeline.tracks.find((track) => track.kind === "visual").clips;
+
+  // La copie se place juste après l'original et repart en version 1.
+  const copyId = (await approve(store, "duplicate_shot", { shotId: a })).approval.result.entityId;
+  assert.deepEqual(titles(), ["Un", "Un (copie)", "Deux"]);
+  const copy = store.snapshot().shots.find((shot) => shot.id === copyId);
+  assert.equal(copy.version, 1);
+  assert.notEqual(copy.id, a);
+  assert.equal(store.snapshot().timeline.durationMs, 7_000, "la timeline suit la copie");
+
+  // Réordonner : un seul ordre, celui des plans.
+  await approve(store, "reorder_shots", { order: [b, copyId, a] });
+  assert.deepEqual(titles(), ["Deux", "Un (copie)", "Un"]);
+  assert.deepEqual(visual().map((clip) => clip.startMs), [0, 3_000, 5_000]);
+
+  await assert.rejects(approve(store, "reorder_shots", { order: [b, a] }), /exactement tous les plans/);
+  await assert.rejects(approve(store, "reorder_shots", { order: [b, b, a] }), /permutation/);
+
+  // Supprimer reste récupérable, à la position d'origine.
+  await approve(store, "delete_shot", { shotId: copyId });
+  assert.deepEqual(titles(), ["Deux", "Un"]);
+  assert.equal(store.snapshot().timeline.durationMs, 5_000);
+  await approve(store, "restore_shot", { shotId: copyId });
+  assert.deepEqual(titles(), ["Deux", "Un (copie)", "Un"]);
+
+  await assert.rejects(approve(store, "restore_shot", { shotId: "shot_inconnu" }), /corbeille/);
+});

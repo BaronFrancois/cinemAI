@@ -614,12 +614,24 @@
     var selected = shots.find(function (shot) { return shot.id === selectedStoryboardShotId; });
     var cards = shots.map(function (shot, index) {
       var frame = storyboardFrame(shot);
-      return '<button type="button" class="storyboard-tile" data-edit-shot="' + escapeHtml(shot.id) + '">' +
+      // La tuile ne peut pas être un bouton : elle en contient d'autres.
+      return '<article class="storyboard-tile"><button type="button" class="storyboard-tile-open" data-edit-shot="' + escapeHtml(shot.id) + '">' +
         '<div class="storyboard-tile-image">' + (frame ? '<img src="' + escapeHtml(frame.url) + '" alt="Image du plan ' + (index + 1) + '">' : '<span>Image à créer</span>') +
         '<span class="storyboard-number">' + String(index + 1).padStart(2, '0') + '</span></div>' +
-        '<div class="storyboard-tile-copy"><small>' + (shot.durationMs / 1000) + ' s · ' + (shot.continuity === 'continuous' ? 'Raccord continu' : 'Coupe') + '</small><h3>' + escapeHtml(shot.title || 'Sans titre') + '</h3><p>' + escapeHtml(shot.description) + '</p><span class="storyboard-status">' + (frame && isMediaApproved(frame) ? '✓ Image validée' : '○ Image à valider') + '</span><span class="storyboard-edit-label">Modifier le plan ↗</span></div></button>';
+        '<div class="storyboard-tile-copy"><small>' + (shot.durationMs / 1000) + ' s · ' + (shot.continuity === 'continuous' ? 'Raccord continu' : 'Coupe') + '</small><h3>' + escapeHtml(shot.title || 'Sans titre') + '</h3><p>' + escapeHtml(shot.description) + '</p><span class="storyboard-status">' + (frame && isMediaApproved(frame) ? '✓ Image validée' : '○ Image à valider') + '</span><span class="storyboard-edit-label">Modifier le plan ↗</span></div></button>' +
+        '<div class="storyboard-tile-actions">' +
+        '<button type="button" data-move-shot="' + escapeHtml(shot.id) + '" data-direction="-1" title="Déplacer avant"' + (index === 0 ? ' disabled' : '') + '>◀</button>' +
+        '<button type="button" data-move-shot="' + escapeHtml(shot.id) + '" data-direction="1" title="Déplacer après"' + (index === shots.length - 1 ? ' disabled' : '') + '>▶</button>' +
+        '<button type="button" data-duplicate-shot="' + escapeHtml(shot.id) + '" title="Dupliquer ce plan">Dupliquer</button>' +
+        '<button type="button" data-delete-shot="' + escapeHtml(shot.id) + '" title="Supprimer, récupérable">Supprimer</button>' +
+        '</div></article>';
     }).join('');
-    var content = selected ? storyboardEditor(selected) : '<div class="storyboard-grid">' + (cards || '<div class="storyboard-empty"><span>01 — Écriture</span><h3>Une idée devient une histoire.</h3><p>Proposez un scénario découpé en séquences et en plans. Relisez-le avant de créer les images.</p><button type="button" class="choice-action primary" data-draft-screenplay>Proposer le scénario</button></div>') + '</div>';
+    var trash = (state.trash || []).map(function (entry) {
+      return '<li><span>' + escapeHtml(entry.shot.title || 'Plan sans titre') + '</span>' +
+        '<button type="button" class="choice-action" data-restore-shot="' + escapeHtml(entry.shot.id) + '">Restaurer</button></li>';
+    }).join('');
+    var trashBlock = trash ? '<section class="storyboard-trash"><span class="context-kicker">Corbeille</span><ul>' + trash + '</ul></section>' : '';
+    var content = selected ? storyboardEditor(selected) : '<div class="storyboard-grid">' + (cards || '<div class="storyboard-empty"><span>01 — Écriture</span><h3>Une idée devient une histoire.</h3><p>Proposez un scénario découpé en séquences et en plans. Relisez-le avant de créer les images.</p><button type="button" class="choice-action primary" data-draft-screenplay>Proposer le scénario</button></div>') + '</div>' + trashBlock;
     showWorkspacePanel('<section class="storyboard-workspace"><header class="workspace-panel-head"><div><span class="context-kicker">Atelier de réalisation</span><h2>' + (selected ? escapeHtml(selected.title || 'Modifier le plan') : 'Votre histoire, plan par plan.') + '</h2><p>' + shots.length + ' plans · ' + shots.reduce(function (sum, s) { return sum + s.durationMs / 1000; }, 0) + ' s · objectif ' + escapeHtml(state.project.durationSeconds) + ' s</p></div><div class="storyboard-toolbar">' +
       (selected ? '<button type="button" class="choice-action" data-storyboard-overview>Vue d’ensemble</button>' : '<button type="button" class="choice-action" data-draft-screenplay>' + (shots.length ? 'Développer le scénario' : 'Proposer le scénario') + '</button>') +
       '<button type="button" class="choice-action" data-open-animatic' + (!shots.length ? ' disabled' : '') + '>▶ Animatique</button><button type="button" class="workspace-close" data-close-workspace aria-label="Fermer">×</button></div></header>' +
@@ -1171,6 +1183,35 @@
   document.addEventListener("click", function (event) {
     var editShot = event.target.closest('[data-edit-shot]');
     if (editShot) { selectedStoryboardShotId = editShot.getAttribute('data-edit-shot'); renderStoryboardWorkspace(); return; }
+    var storyboardAction = event.target.closest('[data-move-shot],[data-duplicate-shot],[data-delete-shot],[data-restore-shot]');
+    if (storyboardAction) {
+      var move = storyboardAction.getAttribute('data-move-shot');
+      var payload = null;
+      if (move) {
+        var ids = (state.shots || []).map(function (shot) { return shot.id; });
+        var from = ids.indexOf(move);
+        var to = from + Number(storyboardAction.getAttribute('data-direction'));
+        if (from < 0 || to < 0 || to >= ids.length) return;
+        ids.splice(to, 0, ids.splice(from, 1)[0]);
+        payload = { operation: 'reorder_shots', args: { order: ids } };
+      } else if (storyboardAction.getAttribute('data-duplicate-shot')) {
+        payload = { operation: 'duplicate_shot', args: { shotId: storyboardAction.getAttribute('data-duplicate-shot') } };
+      } else if (storyboardAction.getAttribute('data-delete-shot')) {
+        payload = { operation: 'delete_shot', args: { shotId: storyboardAction.getAttribute('data-delete-shot') } };
+      } else {
+        payload = { operation: 'restore_shot', args: { shotId: storyboardAction.getAttribute('data-restore-shot') } };
+      }
+      storyboardAction.disabled = true;
+      api('/api/storyboard/edit', { method: 'POST', body: JSON.stringify(payload) }).then(function (result) {
+        state = result.manifest;
+        renderStoryboardWorkspace();
+        renderPanels();
+      }).catch(function (error) {
+        storyboardAction.disabled = false;
+        storyboardAction.title = error.message;
+      });
+      return;
+    }
     if (event.target.closest('[data-storyboard-overview]')) { selectedStoryboardShotId = null; renderStoryboardWorkspace(); return; }
     if (event.target.closest('[data-refresh-storyboard-review]')) { refreshStoryboardReview(); return; }
     var draftScreenplay = event.target.closest('[data-draft-screenplay]');

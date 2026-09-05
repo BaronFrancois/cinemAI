@@ -1278,6 +1278,16 @@ export function createCinemaiServer({
         }
         return;
       }
+      if (url.pathname === "/api/storyboard/edit") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "Méthode non autorisée.", requestId });
+          return;
+        }
+        const payload = await readJsonBody(request);
+        const result = await store.editStoryboard(String(payload?.operation || ""), payload?.args || {});
+        sendJson(response, 200, { ...result, requestId });
+        return;
+      }
       const approveMatch = url.pathname.match(/^\/api\/media\/([^/]+)\/approval$/);
       if (approveMatch) {
         if (request.method !== "POST") {

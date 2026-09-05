@@ -28,8 +28,17 @@ export const OPERATION_NAMES = new Set([
   "create_screenplay",
   "add_timeline_clip",
   "add_audio_clip",
+  "duplicate_shot",
+  "delete_shot",
+  "restore_shot",
+  "reorder_shots",
   "queue_generation",
 ]);
+
+// Une suppression doit être récupérable : un plan supprimé part à la corbeille
+// avec sa position, pas dans le vide.
+const TRASH_LIMIT = 20;
+const STORYBOARD_OPERATIONS = new Set(["duplicate_shot", "delete_shot", "restore_shot", "reorder_shots"]);
 
 const JOB_TRANSITIONS = {
   pending: new Set(["running", "cancelled"]),
@@ -117,6 +126,7 @@ function normalizeManifest(value, now) {
     if (typeof asset.updatedAt !== "string") asset.updatedAt = asset.createdAt || now();
   }
   if (!Array.isArray(manifest.shots)) manifest.shots = [];
+  if (!Array.isArray(manifest.trash)) manifest.trash = [];
   if (manifest.shots.length && manifest.timeline?.tracks) {
     syncVisualTrack(manifest);
     recalculateTimeline(manifest);
@@ -380,6 +390,56 @@ function applyOperation(manifest, operation, now) {
     return { entityType: "shot", entityId: shot.id, tab: "production" };
   }
 
+  if (name === "duplicate_shot") {
+    const source = requireShot(manifest, cleanText(args.shotId, 128));
+    const index = manifest.shots.findIndex((item) => item.id === source.id);
+    const copy = {
+      ...clone(source),
+      id: `shot_${randomUUID()}`,
+      title: cleanText(`${source.title || "Plan"} (copie)`, 120),
+      version: 1,
+      history: [],
+      // Les images appartiennent au plan d'origine : la copie repart sans
+      // média, sinon deux plans partageraient la même frame validée.
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    manifest.shots.splice(index + 1, 0, copy);
+    return { entityType: "shot", entityId: copy.id, tab: "script" };
+  }
+
+  if (name === "delete_shot") {
+    const shot = requireShot(manifest, cleanText(args.shotId, 128));
+    const index = manifest.shots.findIndex((item) => item.id === shot.id);
+    manifest.shots.splice(index, 1);
+    if (!Array.isArray(manifest.trash)) manifest.trash = [];
+    manifest.trash.push({ shot: clone(shot), index, deletedAt: now() });
+    if (manifest.trash.length > TRASH_LIMIT) manifest.trash.shift();
+    return { entityType: "shot", entityId: shot.id, tab: "script" };
+  }
+
+  if (name === "restore_shot") {
+    const shotId = cleanText(args.shotId, 128);
+    if (!Array.isArray(manifest.trash)) manifest.trash = [];
+    const position = manifest.trash.findIndex((entry) => entry.shot?.id === shotId);
+    if (position < 0) fail("Ce plan n'est pas dans la corbeille.", 404);
+    const [entry] = manifest.trash.splice(position, 1);
+    // La position d'origine peut ne plus exister : on borne au lieu d'échouer.
+    manifest.shots.splice(Math.min(entry.index, manifest.shots.length), 0, entry.shot);
+    return { entityType: "shot", entityId: entry.shot.id, tab: "script" };
+  }
+
+  if (name === "reorder_shots") {
+    const order = Array.isArray(args.order) ? args.order.map((id) => cleanText(id, 128)) : [];
+    if (order.length !== manifest.shots.length) fail("L'ordre doit contenir exactement tous les plans.");
+    const known = new Set(manifest.shots.map((shot) => shot.id));
+    if (new Set(order).size !== order.length || order.some((id) => !known.has(id))) {
+      fail("L'ordre doit être une permutation des plans existants.");
+    }
+    manifest.shots = order.map((id) => manifest.shots.find((shot) => shot.id === id));
+    return { entityType: "screenplay", entityId: manifest.project.id, tab: "script" };
+  }
+
   if (name === "add_timeline_clip") {
     // La piste visuelle dérive des plans : accepter un clip manuel créerait un
     // second ordre, aussitôt écrasé. Mieux vaut refuser clairement.
@@ -500,6 +560,29 @@ export function createProductionStore({
       manifest = next;
       await save();
       return { manifest: clone(manifest) };
+    },
+
+    // Réordonner, dupliquer, supprimer et restaurer sont des gestes directs du
+    // réalisateur : c'est lui qui décide, il n'y a pas de proposition à valider.
+    async editStoryboard(name, args = {}) {
+      if (!STORYBOARD_OPERATIONS.has(name)) fail("Cette opération de storyboard est inconnue.");
+      const next = clone(manifest);
+      const result = applyOperation(next, { name, args }, now);
+      syncVisualTrack(next);
+      recalculateTimeline(next);
+      next.revision += 1;
+      next.updatedAt = now();
+      next.activity.push({
+        id: `event_${randomUUID()}`,
+        type: "storyboard_edited",
+        operation: name,
+        targetId: result?.entityId || "",
+        revision: next.revision,
+        at: now(),
+      });
+      manifest = next;
+      await save();
+      return { result, manifest: clone(manifest) };
     },
 
     async attachMedia({
