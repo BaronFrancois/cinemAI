@@ -42,6 +42,18 @@ export const OPERATION_NAMES = new Set([
 const TRASH_LIMIT = 20;
 const STORYBOARD_OPERATIONS = new Set(["split_shot", "duplicate_shot", "delete_shot", "restore_shot", "reorder_shots"]);
 
+// Un plan retiré laisse derrière lui des générations en attente qui ne visent
+// plus rien : on les annule plutôt que de les laisser encombrer la file.
+function cancelOrphanJobs(manifest) {
+  for (const job of manifest.queue || []) {
+    if (job.status !== "pending" || job.targetType !== "shot") continue;
+    if (!manifest.shots.some((shot) => shot.id === job.targetId)) {
+      job.status = "cancelled";
+      job.error = "Le plan visé a été supprimé ou remplacé.";
+    }
+  }
+}
+
 const JOB_TRANSITIONS = {
   pending: new Set(["running", "cancelled"]),
   running: new Set(["review", "succeeded", "failed", "cancelled"]),
@@ -130,6 +142,9 @@ function normalizeManifest(value, now) {
   if (!Array.isArray(manifest.shots)) manifest.shots = [];
   if (!Array.isArray(manifest.trash)) manifest.trash = [];
   if (manifest.storyboardLock === undefined) manifest.storyboardLock = null;
+  // Les manifestes enregistrés avant ce contrôle peuvent contenir des jobs
+  // visant des plans disparus : ils se nettoient au chargement.
+  if (Array.isArray(manifest.queue)) cancelOrphanJobs(manifest);
   if (manifest.shots.length && manifest.timeline?.tracks) {
     syncVisualTrack(manifest);
     recalculateTimeline(manifest);
@@ -599,6 +614,7 @@ export function createProductionStore({
       if (patch.durationMs !== undefined && (!Number.isInteger(patch.durationMs) || patch.durationMs < 250 || patch.durationMs > 120000)) fail("La durée doit être comprise entre 0,25 et 120 secondes.");
       const next = clone(manifest);
       applyOperation(next, { name: "update_shot", args: { shotId, patch, baseVersion } }, now);
+      cancelOrphanJobs(next);
       syncVisualTrack(next);
       recalculateTimeline(next);
       next.revision += 1;
@@ -649,6 +665,7 @@ export function createProductionStore({
       if (!STORYBOARD_OPERATIONS.has(name)) fail("Cette opération de storyboard est inconnue.");
       const next = clone(manifest);
       const result = applyOperation(next, { name, args }, now);
+      cancelOrphanJobs(next);
       syncVisualTrack(next);
       recalculateTimeline(next);
       next.revision += 1;
@@ -862,6 +879,7 @@ export function createProductionStore({
       const result = applyOperation(next, nextApproval.operation, now);
       // Une seule reconstruction après l'opération complète : create_screenplay
       // en applique plusieurs en cascade.
+      cancelOrphanJobs(next);
       syncVisualTrack(next);
       recalculateTimeline(next);
       next.revision += 1;

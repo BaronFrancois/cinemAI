@@ -1100,12 +1100,34 @@
     return '<button type="button" class="export-option' + (String(exportSettings[key]) === String(value) ? ' selected' : '') + '" data-export-key="' + escapeHtml(key) + '" data-export-value="' + escapeHtml(value) + '">' + escapeHtml(label || value) + '</button>';
   }
 
+  // Une file invisible et jamais exécutée : valider une proposition de
+  // génération n'avait aucun effet perceptible. Les jobs en attente sont
+  // désormais listés et lançables, avec leur coût annoncé avant le clic.
+  function queueBlock() {
+    var pending = (state.queue || []).filter(function (job) { return job.status === "pending"; });
+    if (!pending.length) return '';
+    return '<section class="production-queue"><span class="context-kicker">File de production</span>' +
+      '<h3>' + pending.length + ' génération' + (pending.length > 1 ? 's' : '') + ' en attente</h3>' +
+      '<p class="hint">Validées par vous, mais pas encore lancées. Rien n’est facturé tant que vous ne lancez pas.</p>' +
+      '<ul>' + pending.map(function (job) {
+        var shot = (state.shots || []).find(function (item) { return item.id === job.targetId; });
+        var isVideo = job.strategy !== "image" && job.strategy !== "image_sequence";
+        var seconds = shot ? Math.min(10, Math.max(3, Math.round((shot.durationMs || 4000) / 1000))) : 4;
+        var perSecond = mediaConfig && mediaConfig.video ? mediaConfig.video.estimatedCostUsdPerSecond : 0;
+        var cost = isVideo ? (perSecond ? '≈ ' + (seconds * perSecond).toFixed(2) + ' USD' : '') : imageCostLabel('1K');
+        return '<li><div><strong>' + escapeHtml(job.label || 'Génération') + '</strong>' +
+          '<small>' + escapeHtml(shot ? shot.title : 'Cible introuvable') + ' · ' + escapeHtml(cost) + '</small></div>' +
+          '<button type="button" class="choice-action primary" data-run-job="' + escapeHtml(job.id) + '"' + (shot ? '' : ' disabled') + '>Lancer</button>' +
+          '<button type="button" class="choice-action" data-cancel-job="' + escapeHtml(job.id) + '">Annuler</button></li>';
+      }).join('') + '</ul><p class="choice-error hint" data-queue-error hidden></p></section>';
+  }
+
   function renderVideoWorkspace() {
     var shots = state.shots || [];
     showWorkspacePanel('<section class="video-workspace"><header class="workspace-panel-head"><div><span class="context-kicker">Production vidéo</span><h2>Du storyboard aux clips</h2><p>Prévisualisez le rythme, choisissez l’image de chaque plan, puis lancez les clips individuellement. Chaque génération conserve les versions précédentes.</p></div><button type="button" class="choice-action" data-open-animatic>▶ Prévisualiser</button></header>' +
       (shots.length ? shots.map(function (shot) { var frame = storyboardFrame(shot); return '<article class="shot-card" data-shot-card="' + escapeHtml(shot.id) + '"><h3>' + escapeHtml(shot.title) + '</h3><p>' + escapeHtml(shot.description) + '</p>' +
         (frame ? '<img class="video-source" src="' + escapeHtml(frame.url) + '" alt="Image retenue"><p class="hint">Image v' + escapeHtml(frame.version) + (frame.width && frame.height ? ' · ' + frame.width + ' × ' + frame.height : '') + '</p>' : '') +
-        '<button type="button" class="choice-action" data-edit-shot="' + escapeHtml(shot.id) + '">Modifier le plan et son image</button>' + shotVideoBlock(shot, !!frame) + '</article>'; }).join('') : '<p>Créez d’abord le scénario dans Storyboard.</p>') + '</section>', 'video', 'Production vidéo');
+        '<button type="button" class="choice-action" data-edit-shot="' + escapeHtml(shot.id) + '">Modifier le plan et son image</button>' + shotVideoBlock(shot, !!frame) + '</article>'; }).join('') : '<p>Créez d’abord le scénario dans Storyboard.</p>') + queueBlock() + '</section>', 'video', 'Production vidéo');
   }
 
   function renderExportWorkspace() {
@@ -1317,6 +1339,12 @@
         card.appendChild(errorNode);
       }
       errorNode.textContent = error.message;
+      // Une erreur affichée hors de vue passe pour une absence de réaction :
+      // on l'amène à l'écran et on la signale visuellement.
+      card.classList.add("choice-failed");
+      if (typeof errorNode.scrollIntoView === "function") {
+        errorNode.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
     }
   }
 
@@ -1431,6 +1459,48 @@
         restoreVersion.disabled = false;
         restoreVersion.title = error.message;
       });
+      return;
+    }
+    var cancelJob = event.target.closest('[data-cancel-job]');
+    if (cancelJob) {
+      cancelJob.disabled = true;
+      api('/api/jobs/' + encodeURIComponent(cancelJob.getAttribute('data-cancel-job')) + '/transition', {
+        method: 'POST', body: JSON.stringify({ status: 'cancelled' })
+      }).then(function (payload) { state = payload.manifest; renderVideoWorkspace(); renderPanels(); })
+        .catch(function (error) { cancelJob.disabled = false; cancelJob.title = error.message; });
+      return;
+    }
+    var runJob = event.target.closest('[data-run-job]');
+    if (runJob) {
+      var jobId = runJob.getAttribute('data-run-job');
+      var job = (state.queue || []).find(function (item) { return item.id === jobId; });
+      if (!job) return;
+      var isVideo = job.strategy !== 'image' && job.strategy !== 'image_sequence';
+      var route = isVideo
+        ? '/api/shots/' + encodeURIComponent(job.targetId) + '/videos/generate'
+        : '/api/shots/' + encodeURIComponent(job.targetId) + '/images/generate';
+      var body = isVideo ? { confirm: 'GENERATE_VIDEO' } : { confirm: 'GENERATE_IMAGE' };
+      var errorBox = document.querySelector('[data-queue-error]');
+      runJob.disabled = true;
+      runJob.textContent = 'Génération…';
+      if (errorBox) { errorBox.hidden = true; errorBox.textContent = ''; }
+      // Le job passe à running avant l'appel : en cas d'échec, son état dit ce
+      // qui s'est passé au lieu de le laisser éternellement en attente.
+      api('/api/jobs/' + encodeURIComponent(jobId) + '/transition', { method: 'POST', body: JSON.stringify({ status: 'running' }) })
+        .then(function () { return api(route, { method: 'POST', body: JSON.stringify(body) }); })
+        .then(function (payload) {
+          state = payload.manifest;
+          return api('/api/jobs/' + encodeURIComponent(jobId) + '/transition', { method: 'POST', body: JSON.stringify({ status: 'succeeded' }) });
+        })
+        .then(function (payload) { state = payload.manifest; renderVideoWorkspace(); renderPanels(); })
+        .catch(function (error) {
+          runJob.disabled = false;
+          runJob.textContent = 'Lancer';
+          if (errorBox) { errorBox.hidden = false; errorBox.textContent = error.message; }
+          api('/api/jobs/' + encodeURIComponent(jobId) + '/transition', {
+            method: 'POST', body: JSON.stringify({ status: 'failed', error: error.message })
+          }).then(function (payload) { state = payload.manifest; }).catch(function () {});
+        });
       return;
     }
     var lockToggle = event.target.closest('[data-toggle-storyboard-lock]');

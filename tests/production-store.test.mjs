@@ -405,3 +405,22 @@ test("a screenplay only replaces an existing breakdown when explicitly allowed",
   // Le travail remplacé reste récupérable.
   assert.ok(manifest.trash.some((entry) => entry.shot.title === "Ancien"));
 });
+
+test("removing a shot cancels the generations that no longer target anything", async () => {
+  const store = createProductionStore({ persist: false });
+  await approve(store, "set_project", { title: "File" });
+  const shotId = (await approve(store, "create_shot", { title: "Plan", description: "Action.", durationMs: 2_000 })).approval.result.entityId;
+  await approve(store, "queue_generation", { targetType: "shot", targetId: shotId, strategy: "image", label: "Image du plan" });
+  assert.equal(store.snapshot().queue.filter((job) => job.status === "pending").length, 1);
+
+  await store.editStoryboard("delete_shot", { shotId });
+  const job = store.snapshot().queue[0];
+  // Le job ne vise plus rien : il est annulé et dit pourquoi, au lieu de rester
+  // indéfiniment en attente dans la file.
+  assert.equal(job.status, "cancelled");
+  assert.match(job.error, /supprimé ou remplacé/);
+
+  // Restaurer le plan ne ressuscite pas le job : c'est une décision séparée.
+  await store.editStoryboard("restore_shot", { shotId });
+  assert.equal(store.snapshot().queue[0].status, "cancelled");
+});
