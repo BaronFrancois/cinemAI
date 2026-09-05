@@ -1289,6 +1289,15 @@ export function createCinemaiServer({
         }
         return;
       }
+      if (url.pathname === "/api/storyboard/lock") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "Méthode non autorisée.", requestId });
+          return;
+        }
+        const payload = await readJsonBody(request);
+        sendJson(response, 200, { ...await store.setStoryboardLock(payload?.locked !== false), requestId });
+        return;
+      }
       if (url.pathname === "/api/storyboard/edit") {
         if (request.method !== "POST") {
           sendJson(response, 405, { error: "Méthode non autorisée.", requestId });

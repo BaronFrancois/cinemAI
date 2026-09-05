@@ -637,11 +637,19 @@
       return '<li><span>' + escapeHtml(entry.shot.title || 'Plan sans titre') + '</span>' +
         '<button type="button" class="choice-action" data-restore-shot="' + escapeHtml(entry.shot.id) + '">Restaurer</button></li>';
     }).join('');
+    var lockBanner = state.storyboardLock
+      ? '<p class="storyboard-lock">Storyboard validé le ' +
+        escapeHtml(new Date(state.storyboardLock.lockedAt).toLocaleString('fr-FR')) +
+        ' sur ' + state.storyboardLock.shots.length + ' plans. Les modifications ultérieures sont signalées dans Continuité.</p>'
+      : '';
     var trashBlock = trash ? '<section class="storyboard-trash"><span class="context-kicker">Corbeille</span><ul>' + trash + '</ul></section>' : '';
-    var content = selected ? storyboardEditor(selected) : '<div class="storyboard-grid">' + (cards || '<div class="storyboard-empty"><span>01 — Écriture</span><h3>Une idée devient une histoire.</h3><p>Proposez un scénario découpé en séquences et en plans. Relisez-le avant de créer les images.</p><button type="button" class="choice-action primary" data-draft-screenplay>Proposer le scénario</button></div>') + '</div>' + trashBlock;
+    var content = selected ? storyboardEditor(selected) : '<div class="storyboard-grid">' + (cards || '<div class="storyboard-empty"><span>01 — Écriture</span><h3>Une idée devient une histoire.</h3><p>Proposez un scénario découpé en séquences et en plans. Relisez-le avant de créer les images.</p><button type="button" class="choice-action primary" data-draft-screenplay>Proposer le scénario</button></div>') + '</div>' + lockBanner + trashBlock;
     showWorkspacePanel('<section class="storyboard-workspace"><header class="workspace-panel-head"><div><span class="context-kicker">Atelier de réalisation</span><h2>' + (selected ? escapeHtml(selected.title || 'Modifier le plan') : 'Votre histoire, plan par plan.') + '</h2><p>' + shots.length + ' plans · ' + shots.reduce(function (sum, s) { return sum + s.durationMs / 1000; }, 0) + ' s · objectif ' + escapeHtml(state.project.durationSeconds) + ' s</p></div><div class="storyboard-toolbar">' +
       (selected ? '<button type="button" class="choice-action" data-storyboard-overview>Vue d’ensemble</button>' : '<button type="button" class="choice-action" data-draft-screenplay>' + (shots.length ? 'Développer le scénario' : 'Proposer le scénario') + '</button>') +
-      '<button type="button" class="choice-action" data-open-animatic' + (!shots.length ? ' disabled' : '') + '>▶ Animatique</button><button type="button" class="workspace-close" data-close-workspace aria-label="Fermer">×</button></div></header>' +
+      '<button type="button" class="choice-action" data-open-animatic' + (!shots.length ? ' disabled' : '') + '>▶ Animatique</button>' +
+      '<button type="button" class="choice-action' + (state.storyboardLock ? '' : ' primary') + '" data-toggle-storyboard-lock' + (!shots.length ? ' disabled' : '') + '>' +
+      (state.storyboardLock ? 'Rouvrir le storyboard' : 'Valider le storyboard') + '</button>' +
+      '<button type="button" class="workspace-close" data-close-workspace aria-label="Fermer">×</button></div></header>' +
       '<div class="storyboard-body"><div class="storyboard-main">' + content + '</div><aside class="storyboard-review"><span class="context-kicker">Continuité</span><h3>Vérifier avant de générer</h3><p>Contrôles de structure et de références. L’identité visuelle, les costumes et les accessoires restent à examiner sur les images.</p><div data-storyboard-review aria-live="polite">Vérification en cours…</div><button type="button" class="choice-action" data-refresh-storyboard-review>Revérifier</button></aside></div></section>', 'storyboard', 'Storyboard · scénario et cohérence');
     refreshStoryboardReview();
   }
@@ -1295,6 +1303,22 @@
         restoreVersion.disabled = false;
         restoreVersion.title = error.message;
       });
+      return;
+    }
+    var lockToggle = event.target.closest('[data-toggle-storyboard-lock]');
+    if (lockToggle) {
+      var wantLocked = !state.storyboardLock;
+      lockToggle.disabled = true;
+      api('/api/storyboard/lock', { method: 'POST', body: JSON.stringify({ locked: wantLocked }) })
+        .then(function (payload) {
+          state = payload.manifest;
+          renderStoryboardWorkspace();
+          renderPanels();
+        })
+        .catch(function (error) {
+          lockToggle.disabled = false;
+          lockToggle.title = error.message;
+        });
       return;
     }
     var discardDraft = event.target.closest('[data-discard-draft]');

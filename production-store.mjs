@@ -127,6 +127,7 @@ function normalizeManifest(value, now) {
   }
   if (!Array.isArray(manifest.shots)) manifest.shots = [];
   if (!Array.isArray(manifest.trash)) manifest.trash = [];
+  if (manifest.storyboardLock === undefined) manifest.storyboardLock = null;
   if (manifest.shots.length && manifest.timeline?.tracks) {
     syncVisualTrack(manifest);
     recalculateTimeline(manifest);
@@ -564,6 +565,40 @@ export function createProductionStore({
 
     // Réordonner, dupliquer, supprimer et restaurer sont des gestes directs du
     // réalisateur : c'est lui qui décide, il n'y a pas de proposition à valider.
+    // Valider le storyboard fige ce qui a été jugé : versions de texte et images
+    // retenues. Toute modification ultérieure devient repérable, au lieu de
+    // laisser croire que la validation vaut encore.
+    async setStoryboardLock(locked) {
+      const next = clone(manifest);
+      if (!locked) {
+        next.storyboardLock = null;
+      } else {
+        if (!next.shots.length) fail("Il n'y a aucun plan à valider.", 409);
+        next.storyboardLock = {
+          lockedAt: now(),
+          revision: next.revision,
+          shots: next.shots.map((shot) => {
+            const frames = next.media.filter(
+              (item) => item.targetType === "shot" && item.targetId === shot.id && item.kind === "image",
+            );
+            const frame = frames.find((item) => item.status === "approved") || frames[frames.length - 1] || null;
+            return { shotId: shot.id, version: shot.version, mediaId: frame ? frame.id : null };
+          }),
+        };
+      }
+      next.revision += 1;
+      next.updatedAt = now();
+      next.activity.push({
+        id: `event_${randomUUID()}`,
+        type: locked ? "storyboard_locked" : "storyboard_unlocked",
+        revision: next.revision,
+        at: now(),
+      });
+      manifest = next;
+      await save();
+      return { lock: clone(manifest.storyboardLock), manifest: clone(manifest) };
+    },
+
     async editStoryboard(name, args = {}) {
       if (!STORYBOARD_OPERATIONS.has(name)) fail("Cette opération de storyboard est inconnue.");
       const next = clone(manifest);

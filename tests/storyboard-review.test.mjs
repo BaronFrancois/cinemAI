@@ -103,3 +103,48 @@ test('a frame generated from a superseded reference is flagged for review', () =
   delete manifest.media[1].sourceRefs;
   assert.equal(reviewStoryboard(manifest).issues.some(i => i.code === 'reference_changed'), false);
 });
+
+test('a locked storyboard reports exactly what moved since validation', () => {
+  const base = () => ({
+    project: { id: 'p1', durationSeconds: 8 },
+    shots: [
+      { id: 's1', title: 'Un', description: 'Action un.', durationMs: 4000, version: 2, assetIds: [], continuity: 'cut' },
+      { id: 's2', title: 'Deux', description: 'Action deux.', durationMs: 4000, version: 1, assetIds: [], continuity: 'cut' },
+    ],
+    assets: [],
+    media: [{ id: 'm1', targetType: 'shot', targetId: 's1', kind: 'image', status: 'approved', version: 1 }],
+    storyboardLock: {
+      lockedAt: '2026-09-05T10:00:00Z',
+      shots: [{ shotId: 's1', version: 2, mediaId: 'm1' }, { shotId: 's2', version: 1, mediaId: null }],
+    },
+  });
+
+  // Rien n'a bougé : aucune alerte liée à la validation.
+  const stable = reviewStoryboard(base()).issues.map(i => i.code);
+  assert.equal(stable.some(code => code.endsWith('_since_lock')), false);
+
+  // Texte modifié après validation.
+  const edited = base();
+  edited.shots[0].version = 3;
+  assert.ok(reviewStoryboard(edited).issues.some(i => i.code === 'edited_since_lock'));
+
+  // Image remplacée après validation.
+  const reframed = base();
+  reframed.media.push({ id: 'm2', targetType: 'shot', targetId: 's1', kind: 'image', status: 'approved', version: 2 });
+  reframed.media[0].status = 'ready';
+  assert.ok(reviewStoryboard(reframed).issues.some(i => i.code === 'frame_changed_since_lock'));
+
+  // Plan ajouté, puis plan supprimé.
+  const added = base();
+  added.shots.push({ id: 's3', title: 'Trois', description: 'Action trois.', durationMs: 1000, version: 1, assetIds: [], continuity: 'cut' });
+  assert.ok(reviewStoryboard(added).issues.some(i => i.code === 'added_since_lock'));
+
+  const removed = base();
+  removed.shots.pop();
+  assert.ok(reviewStoryboard(removed).issues.some(i => i.code === 'removed_since_lock'));
+
+  // Sans validation enregistrée, aucun de ces contrôles ne s'applique.
+  const unlocked = base();
+  unlocked.storyboardLock = null;
+  assert.equal(reviewStoryboard(unlocked).issues.some(i => i.code.endsWith('_since_lock')), false);
+});

@@ -2602,3 +2602,12 @@ html:not(.bridge-ready) [data-thread] {
 .storyboard-history article small { color: var(--cobalt-hi); font-size: 11px; }
 
 .storyboard-history article button { justify-self: start; margin-top: 3px; }
+
+.storyboard-lock {
+  margin: 14px 0 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(64, 196, 132, 0.45);
+  border-radius: 10px;
+  color: var(--ink-3);
+  font-size: 12px;
+}

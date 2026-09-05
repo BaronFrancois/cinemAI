@@ -6,6 +6,33 @@ export function reviewStoryboard(manifest) {
   const issues = [];
   const add = (code, message, shotId = null) => issues.push({ code, message, shotId });
   if (!shots.length) add("empty", "Le scénario doit être découpé en plans.");
+
+  // Une validation ne vaut que pour ce qui a été jugé : on dit précisément ce
+  // qui a bougé depuis, plutôt que de laisser croire qu'elle tient toujours.
+  const lock = manifest.storyboardLock;
+  if (lock && Array.isArray(lock.shots)) {
+    const locked = new Map(lock.shots.map(entry => [entry.shotId, entry]));
+    for (const shot of shots) {
+      const entry = locked.get(shot.id);
+      if (!entry) {
+        add("added_since_lock", "Ce plan a été ajouté après la validation du storyboard.", shot.id);
+        continue;
+      }
+      if (entry.version !== shot.version) {
+        add("edited_since_lock", "Le texte de ce plan a changé depuis la validation : revérifiez-le.", shot.id);
+      }
+      const frames = media.filter(m => m.targetType === "shot" && m.targetId === shot.id && m.kind === "image");
+      const current = frames.find(m => m.status === "approved") || frames.at(-1);
+      if ((current ? current.id : null) !== (entry.mediaId || null)) {
+        add("frame_changed_since_lock", "L’image retenue a changé depuis la validation : revérifiez ce plan.", shot.id);
+      }
+    }
+    for (const entry of lock.shots) {
+      if (!shots.some(shot => shot.id === entry.shotId)) {
+        add("removed_since_lock", "Un plan validé a été supprimé depuis la validation du storyboard.");
+      }
+    }
+  }
   const durationMs = shots.reduce((sum, shot) => sum + (shot.durationMs || 0), 0);
   const targetMs = (manifest.project?.durationSeconds || 0) * 1000;
   if (shots.length && targetMs && Math.abs(durationMs - targetMs) > 500) {
