@@ -1,3 +1,22 @@
+const NARRATIVE_PROPERTIES = {
+  narrativeTransition: {
+    type: "string", enum: ["unspecified", "direct", "ellipsis"],
+    description: "Lien narratif depuis le plan précédent : non précisé, action sans interruption, ou ellipse assumée. Une coupe visuelle ne prouve pas une ellipse.",
+  },
+  narrativeStates: {
+    type: "array",
+    description: "Au plus 20 faits déclarés avant/après l’action, sur des références liées au plan. Réutilise les mêmes libellés de propriété et valeurs entre plans ; chaîne vide pour un état inconnu. Ne prétends pas les avoir observés dans les images.",
+    items: {
+      type: "object",
+      properties: {
+        assetId: { type: "string" }, property: { type: "string", description: "Propriété stable suivie : position, tenue, possession…" },
+        before: { type: "string" }, after: { type: "string" },
+      },
+      required: ["assetId", "property", "before", "after"],
+    },
+  },
+};
+
 export const GEMINI_FUNCTION_DECLARATIONS = [
   {
     name: "create_screenplay",
@@ -12,6 +31,7 @@ export const GEMINI_FUNCTION_DECLARATIONS = [
             shots: { type: "array", items: {
               type: "object",
               properties: {
+                ...NARRATIVE_PROPERTIES,
                 title: { type: "string" }, description: { type: "string" },
                 durationMs: { type: "integer" },
                 assetIds: { type: "array", items: { type: "string" }, description: "Identifiants exacts des références existantes." },
@@ -87,6 +107,7 @@ export const GEMINI_FUNCTION_DECLARATIONS = [
     parameters: {
       type: "object",
       properties: {
+        ...NARRATIVE_PROPERTIES,
         sequenceId: { type: "string" },
         title: { type: "string" },
         description: { type: "string" },
@@ -121,6 +142,8 @@ export const GEMINI_FUNCTION_DECLARATIONS = [
         patch: {
           type: "object",
           properties: {
+            ...NARRATIVE_PROPERTIES,
+            assetIds: { type: "array", items: { type: "string" } },
             title: { type: "string" },
             description: { type: "string" },
             durationMs: { type: "integer" },

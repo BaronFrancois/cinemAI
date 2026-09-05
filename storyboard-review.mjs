@@ -1,4 +1,5 @@
 // Structural checks only: no provider call and no claim of visual recognition.
+import { reviewNarrativeContinuity } from "./narrative-continuity.mjs";
 export function reviewStoryboard(manifest) {
   const shots = manifest.shots || [];
   const assets = manifest.assets || [];
@@ -82,5 +83,7 @@ export function reviewStoryboard(manifest) {
       }
     }
   });
-  return { revision: manifest.revision, scope: "structure", durationMs, targetMs, approvedFrames, shotCount: shots.length, issues };
+  const narrative = reviewNarrativeContinuity(shots, assets);
+  return { revision: manifest.revision, scope: "structure", durationMs, targetMs, approvedFrames, shotCount: shots.length,
+    issues: [...issues, ...narrative.issues], narrativeQuestions: narrative.questions, narrativeSummary: narrative.summary };
 }

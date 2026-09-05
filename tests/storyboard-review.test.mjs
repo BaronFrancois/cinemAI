@@ -148,3 +148,107 @@ test('a locked storyboard reports exactly what moved since validation', () => {
   unlocked.storyboardLock = null;
   assert.equal(reviewStoryboard(unlocked).issues.some(i => i.code.endsWith('_since_lock')), false);
 });
+
+import { reviewNarrativeContinuity, cleanNarrativeStates } from '../narrative-continuity.mjs';
+import { summarizeManifest } from '../production-store.mjs';
+
+const narrativeAsset = { id: 'cup', type: 'prop', name: 'Tasse' };
+const fact = (before, after) => ({ assetId: 'cup', property: 'position', before, after });
+const narrativeShot = (id, states, extra = {}) => ({ id, title: id, version: 1, assetIds: ['cup'], narrativeStates: states, continuity: 'cut', ...extra });
+
+test('narrative mismatch on direct action names both shots and gives versioned evidence', () => {
+  const shots = [narrativeShot('Plan 3', [fact('en main', 'sur le bureau')]), narrativeShot('Plan 4', [fact('en main', 'en main')], { narrativeTransition: 'direct' })];
+  const before = structuredClone(shots);
+  const result = reviewNarrativeContinuity(shots, [narrativeAsset]);
+  assert.equal(result.issues.length, 1);
+  assert.equal(result.questions.length, 0);
+  assert.deepEqual(result.issues[0].relatedShotIds, ['Plan 3', 'Plan 4']);
+  assert.deepEqual(result.issues[0].evidence.map(e => e.value), ['sur le bureau', 'en main']);
+  assert.equal(result.issues[0].evidence[1].shotVersion, 1);
+  assert.deepEqual(shots, before);
+});
+
+test('explicit pickup in the next shot is a valid change within that shot', () => {
+  const shots = [narrativeShot('A', [fact('en main', 'sur le bureau')]), narrativeShot('B', [fact('sur le bureau', 'en main')], { description: 'Elle reprend la tasse.', narrativeTransition: 'direct' })];
+  const result = reviewNarrativeContinuity(shots, [narrativeAsset]);
+  assert.equal(result.issues.length, 0);
+  assert.equal(result.questions.length, 0);
+  assert.equal(result.summary.compared, 1);
+});
+
+test('unknown transition is a question, explicit ellipsis is not a contradiction', () => {
+  const shots = [narrativeShot('A', [fact('en main', 'sur le bureau')]), narrativeShot('B', [fact('en main', 'en main')])];
+  const question = reviewNarrativeContinuity(shots, [narrativeAsset]);
+  assert.equal(question.issues.length, 0);
+  assert.equal(question.questions.length, 1);
+  shots[1].narrativeTransition = 'ellipsis';
+  const ellipse = reviewNarrativeContinuity(shots, [narrativeAsset]);
+  assert.equal(ellipse.issues.length, 0);
+  assert.equal(ellipse.questions.length, 0);
+  assert.equal(ellipse.summary.ellipses, 1);
+});
+
+test('missing facts and undocumented intermediate shots remain indeterminate', () => {
+  const shots = [narrativeShot('A', [fact('', 'sur le bureau')]), narrativeShot('B', []), narrativeShot('C', [fact('en main', '')], { narrativeTransition: 'direct' })];
+  const result = reviewNarrativeContinuity(shots, [narrativeAsset]);
+  assert.equal(result.issues.length, 0);
+  assert.equal(result.questions.length, 0);
+  assert.equal(result.summary.indeterminate, 1);
+  const unknown = reviewNarrativeContinuity([shots[0], narrativeShot('D', [fact('inconnu', '')], { narrativeTransition: 'direct' })], [narrativeAsset]);
+  assert.equal(unknown.issues.length, 0);
+  assert.equal(unknown.summary.compared, 0);
+});
+
+test('continuous camera action is direct, ordinary cuts are not; case and spacing do not create mismatches', () => {
+  const shots = [narrativeShot('A', [fact('', 'SUR  LE BUREAU')]), narrativeShot('B', [fact('sur le bureau', 'en main')], { continuity: 'continuous' })];
+  assert.equal(reviewNarrativeContinuity(shots, [narrativeAsset]).issues.length, 0);
+  shots[1].narrativeStates[0].before = 'en main';
+  assert.equal(reviewNarrativeContinuity(shots, [narrativeAsset]).issues.length, 1);
+});
+
+test('state validation rejects unknown references, duplicate properties and malformed values', () => {
+  assert.throws(() => cleanNarrativeStates([fact('a','b')], []), /lié au plan/);
+  assert.throws(() => cleanNarrativeStates([fact('a','b'), { ...fact('c','d'), property: ' POSITION ' }], ['cup']), /deux fois/);
+  for (const invalid of [null, {}, [null], Array(21).fill(fact('a','b')), [{ ...fact('a','b'), before: 4 }]]) assert.throws(() => cleanNarrativeStates(invalid, ['cup']));
+  assert.equal(cleanNarrativeStates([fact('unknown', '?')], ['cup'])[0].before, '');
+});
+
+test('narrative states survive approvals, summaries, history and restoration without touching media or neighbours', async () => {
+  const store = createProductionStore({ persist: false });
+  await approve(store, 'set_project', { title: 'Film' });
+  const assetId = (await approve(store, 'create_asset', { assetType: 'prop', name: 'Tasse' })).approval.result.entityId;
+  const states = [{ ...fact('en main', 'sur le bureau'), assetId }];
+  const p = await store.propose('create_shot', { description: 'Elle pose la tasse.', assetIds: [assetId], narrativeStates: states, narrativeTransition: 'direct' });
+  assert.equal(store.snapshot().shots.length, 0);
+  const id = (await store.decide(p.id, 'approve')).approval.result.entityId;
+  await approve(store, 'create_shot', { description: 'Voisin' });
+  const before = store.snapshot();
+  const result = await store.editShot(id, { narrativeStates: [{ ...states[0], after: 'en main' }] }, 1);
+  assert.deepEqual(result.manifest.shots[0].history[0].narrativeStates, states);
+  assert.deepEqual(result.manifest.shots[1], before.shots[1]);
+  assert.deepEqual(result.manifest.media, before.media);
+  assert.deepEqual(summarizeManifest(result.manifest).shots[0].narrativeStates, result.manifest.shots[0].narrativeStates);
+  await store.editShot(id, { narrativeStates: states }, 2);
+  assert.equal(store.snapshot().shots[0].version, 3);
+  assert.deepEqual(store.snapshot().shots[0].narrativeStates, states);
+  const snapshot = store.snapshot();
+  await assert.rejects(store.editShot(id, { narrativeStates: null }, 3), /20 états/);
+  await assert.rejects(store.editShot(id, { assetIds: [] }, 3), /lié au plan/);
+  await assert.rejects(store.editShot(id, { narrativeTransition: 'invalid' }, 3), /transition narrative/);
+  assert.deepEqual(store.snapshot(), snapshot);
+});
+
+test('screenplay approval carries narrative states atomically and old shots default to unknown', async () => {
+  const store = createProductionStore({ persist: false });
+  await approve(store, 'set_project', { title: 'Film' });
+  const assetId = (await approve(store, 'create_asset', { assetType: 'prop', name: 'Tasse' })).approval.result.entityId;
+  await approve(store, 'create_screenplay', { sequences: [{ title: 'Action', shots: [{ description: 'Elle pose la tasse.', assetIds: [assetId], narrativeStates: [{ ...fact('en main', 'sur le bureau'), assetId }] }] }] });
+  assert.equal(store.snapshot().shots[0].narrativeStates.length, 1);
+  const legacy = store.snapshot();
+  delete legacy.shots[0].narrativeStates;
+  delete legacy.shots[0].narrativeTransition;
+  const migrated = createProductionStore({ persist: false, initialState: legacy }).snapshot();
+  assert.deepEqual(migrated.shots[0].narrativeStates, []);
+  assert.equal(migrated.shots[0].narrativeTransition, 'unspecified');
+  assert.equal(reviewStoryboard(migrated).narrativeSummary.trackedShots, 0);
+});

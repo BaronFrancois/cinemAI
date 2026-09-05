@@ -124,3 +124,24 @@ Direction visuelle choisie le 2026-09-04 : troisième maquette Product Design.
 - Chronologie du Script en liste verticale actes → séquences → scènes.
 - Propositions du LLM champ par champ, avec Appliquer / Ignorer.
 - Contenu narratif d'Odyssey rédigé par Claude.
+
+## Lot 4 — Reprise Codex : continuité narrative déclarée
+
+| Tâche | Statut |
+| --- | --- |
+| États avant/après versionnés, édition dans le storyboard et contrats de l’agent | EN REVUE |
+| Comparaison des plans adjacents : contradiction explicite, ellipse et information indéterminée | EN REVUE |
+| Preuves et préparation d’une correction ciblée, tests isolés puis vérification en ligne | EN REVUE |
+
+Périmètre : faits déclarés dans le scénario ; aucune analyse de pixels ni génération payante.
+
+Vérification logique : 88 tests passent (80 à la reprise). Les trois cas centraux
+sont couverts : écart sur une action directe, reprise explicite dans le plan suivant,
+et transition indéterminée ; s’ajoutent ellipse, validation, historique et migration.
+Vérification UI : ordinateur 1440 × 1000 et mobile 390 × 844 ; brouillons,
+sauvegardes successives, restauration, ajout/retrait de lignes et correction préparée
+sans appel fournisseur. Aucun débordement horizontal ni erreur JavaScript.
+Déployé sur Fly.io ; endpoints et formulaire vérifiés en ligne en lecture seule.
+Révision, versions/identifiants des plans et identifiants médias conservés après déploiement.
+Documentation : `docs/narrative-continuity.md`. Analyse du texte libre et des pixels
+restent des lots distincts, non revendiqués dans cette livraison.

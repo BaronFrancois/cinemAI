@@ -2611,3 +2611,20 @@ html:not(.bridge-ready) [data-thread] {
   color: var(--ink-3);
   font-size: 12px;
 }
+
+/* Declared narrative facts: optional and separate from visual inspection. */
+.narrative-fields { border: 1px solid var(--line); padding: 14px; border-radius: 12px; }
+.narrative-fields summary { cursor: pointer; font-size: 12px; line-height: 1.6; }
+.narrative-state-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; border-top: 1px solid var(--line); margin: 14px 0; padding-top: 14px; }
+.narrative-state-row .choice-action { justify-self: start; min-height: 32px; }
+.narrative-fields > button { margin-top: 12px; min-height: 32px; }
+.narrative-finding-label { display: block; color: #efd1a3; font-size: 11px; margin-bottom: 8px; }
+.narrative-plan-links { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.storyboard-review .narrative-plan-links button { min-height: 32px; }
+.storyboard-review li > .choice-action { display: block; padding: 8px 10px; margin-top: 12px; border: 1px solid var(--line); font-size: 11px; }
+.storyboard-review li small, .narrative-coverage small { font-size: 11px; color: var(--ink-2); line-height: 1.6; }
+.narrative-coverage { padding: 18px 0; border-top: 1px solid var(--line); }
+.narrative-coverage > strong { font-size: 12px; }
+.narrative-questions summary { font-size: 12px; color: var(--ink-2); line-height: 1.6; cursor: pointer; }
+.narrative-questions .narrative-finding-label { color: var(--ink-2); }
+@media(max-width: 600px) { .narrative-state-row { grid-template-columns: minmax(0, 1fr); } }

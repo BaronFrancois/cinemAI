@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { cleanNarrativeStates, cleanNarrativeTransition } from "./narrative-continuity.mjs";
 
 export const VISUAL_STRATEGIES = new Set([
   "image",
@@ -133,6 +134,8 @@ function normalizeManifest(value, now) {
     recalculateTimeline(manifest);
   }
   for (const shot of manifest.shots) {
+    if (shot.narrativeStates === undefined) shot.narrativeStates = [];
+    if (shot.narrativeTransition === undefined) shot.narrativeTransition = "unspecified";
     if (!Array.isArray(shot.history)) shot.history = [];
     if (!Array.isArray(shot.dialogue)) shot.dialogue = [];
     if (!SHOT_CONTINUITIES.has(shot.continuity)) shot.continuity = "cut";
@@ -356,6 +359,8 @@ function applyOperation(manifest, operation, now) {
       createdAt: now(),
       updatedAt: now(),
     };
+    shot.narrativeStates = cleanNarrativeStates(args.narrativeStates, shot.assetIds);
+    shot.narrativeTransition = cleanNarrativeTransition(args.narrativeTransition);
     manifest.shots.push(shot);
     return { entityType: "shot", entityId: shot.id, tab: "production" };
   }
@@ -386,6 +391,10 @@ function applyOperation(manifest, operation, now) {
       if (!SHOT_CONTINUITIES.has(patch.continuity)) fail("La continuité doit valoir cut ou continuous.");
       shot.continuity = patch.continuity;
     }
+    if (patch.narrativeStates !== undefined || patch.assetIds !== undefined) {
+      shot.narrativeStates = cleanNarrativeStates(patch.narrativeStates !== undefined ? patch.narrativeStates : shot.narrativeStates, shot.assetIds);
+    }
+    if (patch.narrativeTransition !== undefined) shot.narrativeTransition = cleanNarrativeTransition(patch.narrativeTransition);
     shot.version += 1;
     shot.updatedAt = now();
     return { entityType: "shot", entityId: shot.id, tab: "production" };
@@ -880,11 +889,13 @@ export function summarizeManifest(manifest) {
     assets: manifest.assets.map(({ id, type, name, description, version }) => ({ id, type, name, description, version })).slice(0, 40),
     media: (manifest.media || []).map(({ id, targetType, targetId, kind, purpose, variantKey, variantVersion, parentMediaId, version, url, mimeType, provider, model, status }) => ({ id, targetType, targetId, kind, purpose, variantKey, variantVersion, parentMediaId, version, url, mimeType, provider, model, status })).slice(-80),
     sequences: manifest.sequences.map(({ id, title, order }) => ({ id, title, order })).slice(0, 30),
-    shots: manifest.shots.map(({ id, sequenceId, title, description, durationMs, strategy, version, dialogue, continuity, assetIds }) => ({
+    shots: manifest.shots.map(({ id, sequenceId, title, description, durationMs, strategy, version, dialogue, continuity, assetIds, narrativeStates, narrativeTransition }) => ({
       id, sequenceId, title, description, durationMs, strategy, version,
       assetIds: assetIds || [],
       dialogue: dialogue || [],
       continuity: continuity || "cut",
+      narrativeStates: narrativeStates || [],
+      narrativeTransition: narrativeTransition || "unspecified",
     })).slice(0, 50),
     timelineDurationMs: manifest.timeline.durationMs,
     pendingApprovals: manifest.approvals.filter((item) => item.status === "pending").length,

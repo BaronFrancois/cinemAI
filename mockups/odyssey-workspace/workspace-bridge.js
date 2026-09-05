@@ -654,6 +654,42 @@
     refreshStoryboardReview();
   }
 
+  function narrativeStateRow(entry) {
+    entry = entry || {};
+    return '<div class="narrative-state-row" data-narrative-state>' +
+      '<label>Élément<select data-state-field="assetId" required><option value="">Choisir une référence</option>' + (state.assets || []).map(function (asset) { return option(asset.id, asset.name, entry.assetId); }).join('') + '</select></label>' +
+      '<label>Propriété<input data-state-field="property" required maxlength="80" placeholder="Ex. position" value="' + escapeHtml(entry.property || '') + '"></label>' +
+      '<label>Au début du plan<input data-state-field="before" maxlength="240" placeholder="Inconnu si vide" value="' + escapeHtml(entry.before || '') + '"></label>' +
+      '<label>À la fin du plan<input data-state-field="after" maxlength="240" placeholder="Inconnu si vide" value="' + escapeHtml(entry.after || '') + '"></label>' +
+      '<button type="button" class="choice-action" data-remove-narrative-state aria-label="Retirer cet état">Retirer</button></div>';
+  }
+
+  function narrativeFields(current) {
+    return '<details class="narrative-fields"' + ((current.narrativeStates || []).length ? ' open' : '') + '><summary>Continuité narrative · états avant / après</summary>' +
+      '<p>Suivez une propriété d’un personnage ou d’un objet. Utilisez les mêmes libellés entre plans. Un champ vide reste inconnu ; ces faits sont déclarés, pas détectés dans les images.</p>' +
+      '<label>Depuis le plan précédent<select name="narrativeTransition">' + option('unspecified', 'Non précisé (ou raccord continu existant)', current.narrativeTransition || 'unspecified') + option('direct', 'Même action, sans interruption', current.narrativeTransition) + option('ellipsis', 'Ellipse : changement hors champ assumé', current.narrativeTransition) + '</select></label>' +
+      '<div data-narrative-states>' + (current.narrativeStates || []).map(narrativeStateRow).join('') + '</div>' +
+      '<button type="button" class="choice-action" data-add-narrative-state' + (!(state.assets || []).length ? ' disabled' : '') + '>Ajouter un état</button>' +
+      '<p class="hint">L’élément choisi est aussi lié au plan. Exemple : tasse, position, « sur le bureau » au début et « dans la main » à la fin si l’action décrit sa reprise. Maximum 20 états.</p></details>';
+  }
+
+  function readNarrativeStates(form) {
+    return Array.from(form.querySelectorAll('[data-narrative-state]')).map(function (row) {
+      var entry = {};
+      row.querySelectorAll('[data-state-field]').forEach(function (input) { entry[input.getAttribute('data-state-field')] = input.value; });
+      return entry;
+    });
+  }
+
+  function narrativeFinding(finding) {
+    var links = (finding.relatedShotIds || []).map(function (id) {
+      var shot = (state.shots || []).find(function (s) { return s.id === id; });
+      return shot ? '<button type="button" data-edit-shot="' + escapeHtml(id) + '">' + escapeHtml(shot.title || 'Voir le plan') + ' ↗</button>' : '';
+    }).join(' → ');
+    var prompt = 'Aide-moi à résoudre ce point de continuité sur les faits déclarés : ' + finding.message + '\n' + finding.suggestion + '\nPropose une correction ciblée via update_shot avec les identifiants existants, sans application automatique ni génération de média.';
+    return '<li><span class="narrative-finding-label">' + (finding.severity === 'contradiction' ? 'États déclarés incompatibles' : 'Transition à préciser') + '</span><div class="narrative-plan-links">' + links + '</div><p>' + escapeHtml(finding.message) + '</p><small>' + escapeHtml(finding.suggestion) + '</small><button type="button" class="choice-action" data-home-prompt="' + escapeHtml(prompt) + '">Préparer une correction</button></li>';
+  }
+
   function storyboardEditor(shot) {
     var draft = shotDrafts[shot.id] || null;
     var current = draft ? draft.values : {
@@ -661,6 +697,8 @@
       description: shot.description || '',
       seconds: String(shot.durationMs / 1000),
       continuity: shot.continuity || 'cut',
+      narrativeStates: shot.narrativeStates || [],
+      narrativeTransition: shot.narrativeTransition || 'unspecified',
       dialogue: (shot.dialogue || []).map(function (line) { return line.speaker + ' : ' + line.line; }).join('\n'),
       assetIds: shot.assetIds || [],
     };
@@ -678,6 +716,7 @@
       '<div class="storyboard-fields"><label>Durée (secondes)<input name="seconds" type="number" min="0.25" max="120" step="0.25" required value="' + escapeHtml(current.seconds) + '"></label><label>Raccord<select name="continuity">' + option('cut', 'Coupe franche', current.continuity) + option('continuous', 'Prolonger le plan précédent', current.continuity) + '</select></label></div>' +
       '<label>Dialogues — une ligne « Personnage : réplique »<textarea name="dialogue" rows="3">' + escapeHtml(dialogue) + '</textarea></label>' +
       '<fieldset><legend>Personnages et décors liés</legend>' + (state.assets || []).map(function (asset) { return '<label class="storyboard-reference"><input type="checkbox" name="assetIds" value="' + escapeHtml(asset.id) + '"' + ((current.assetIds || []).includes(asset.id) ? ' checked' : '') + '>' + escapeHtml(asset.name) + '</label>'; }).join('') + '</fieldset>' +
+      narrativeFields(current) +
       '<button class="choice-action primary" type="submit">Enregistrer le texte</button><p class="hint">Une nouvelle version du texte est conservée. L’image se régénère séparément.</p><p data-shot-save-status role="status"></p></form>' +
       '<details class="storyboard-history"><summary>Historique du texte (' + (shot.history || []).length + ')</summary>' +
       ((shot.history || []).length
@@ -689,6 +728,8 @@
             if ((old.description || '') !== (shot.description || '')) changes.push('action');
             if (old.durationMs !== shot.durationMs) changes.push('durée ' + (old.durationMs / 1000) + ' s au lieu de ' + (shot.durationMs / 1000) + ' s');
             if ((old.continuity || 'cut') !== (shot.continuity || 'cut')) changes.push('raccord');
+            if (JSON.stringify(old.narrativeStates || []) !== JSON.stringify(shot.narrativeStates || [])) changes.push('états narratifs');
+            if ((old.narrativeTransition || 'unspecified') !== (shot.narrativeTransition || 'unspecified')) changes.push('transition narrative');
             if (JSON.stringify(old.dialogue || []) !== JSON.stringify(shot.dialogue || [])) changes.push('dialogues');
             if ((old.assetIds || []).slice().sort().join() !== (shot.assetIds || []).slice().sort().join()) changes.push('références');
             return '<article><strong>v' + old.version + ' · ' + escapeHtml(old.title || 'Sans titre') + '</strong>' +
@@ -710,9 +751,13 @@
       var report = payload.review;
       target.innerHTML = '<strong>' + report.issues.length + ' point' + (report.issues.length > 1 ? 's' : '') + ' à examiner</strong><small>' + report.approvedFrames + '/' + report.shotCount + ' images validées</small>' +
         (report.issues.length ? '<ul>' + report.issues.map(function (issue) {
+          if (issue.code === 'narrative_state_conflict') return narrativeFinding(issue);
           var shot = (state.shots || []).find(function (s) { return s.id === issue.shotId; });
           return '<li>' + (shot ? '<button type="button" data-edit-shot="' + escapeHtml(shot.id) + '">' + escapeHtml(shot.title || 'Voir le plan') + ' ↗</button>' : '<b>Ensemble du film</b>') + '<p>' + escapeHtml(issue.message) + '</p></li>';
         }).join('') + '</ul>' : '<p>Les contrôles de structure passent. Revoyez les images dans l’animatique.</p>');
+      var narrative = report.narrativeSummary;
+      if (narrative) target.insertAdjacentHTML('beforeend', '<div class="narrative-coverage"><strong>Faits narratifs déclarés</strong><p>' + narrative.trackedShots + ' plan(s) renseigné(s) · ' + narrative.compared + ' comparaison(s) · ' + narrative.indeterminate + ' état(s) indéterminé(s) · ' + narrative.ellipses + ' ellipse(s).</p><small>Absence de contradiction détectée ne signifie pas que tout le récit a été vérifié.</small></div>');
+      if ((report.narrativeQuestions || []).length) target.insertAdjacentHTML('beforeend', '<details class="narrative-questions" open><summary>' + report.narrativeQuestions.length + ' transition(s) à préciser — aucune erreur certaine</summary><ul>' + report.narrativeQuestions.map(narrativeFinding).join('') + '</ul></details>');
     }).catch(function (error) {
       var target = document.querySelector('[data-storyboard-review]');
       if (target && request === storyboardReviewRequest) target.textContent = error.message;
@@ -728,6 +773,8 @@
         description: String(values.get('description') || ''),
         seconds: String(values.get('seconds') || ''),
         continuity: String(values.get('continuity') || 'cut'),
+        narrativeStates: readNarrativeStates(form),
+        narrativeTransition: String(values.get('narrativeTransition') || 'unspecified'),
         dialogue: String(values.get('dialogue') || ''),
         assetIds: values.getAll('assetIds'),
       },
@@ -741,7 +788,12 @@
 
   document.addEventListener('change', function (event) {
     var changedForm = event.target.closest && event.target.closest('[data-shot-editor]');
-    if (changedForm) captureShotDraft(changedForm);
+    if (changedForm) {
+      if (event.target.matches('[data-state-field="assetId"]')) {
+        changedForm.querySelectorAll('[name="assetIds"]').forEach(function (box) { if (box.value === event.target.value) box.checked = true; });
+      }
+      captureShotDraft(changedForm);
+    }
   });
 
   document.addEventListener('submit', function (event) {
@@ -755,6 +807,7 @@
     if (lines.length > 12 || lines.some(function (line) { return line.indexOf(':') < 1 || !line.slice(line.indexOf(':') + 1).trim(); })) { status.textContent = 'Utilisez au plus 12 lignes au format « Personnage : réplique ».'; return; }
     button.disabled = true;
     api('/api/shots/' + encodeURIComponent(form.getAttribute('data-shot-editor')), { method: 'PATCH', body: JSON.stringify({ baseVersion: Number(form.getAttribute('data-base-version')), patch: {
+      narrativeStates: readNarrativeStates(form), narrativeTransition: values.get('narrativeTransition') || 'unspecified',
       title: values.get('title'), description: values.get('description'), durationMs: Math.round(Number(values.get('seconds')) * 1000), continuity: values.get('continuity'), assetIds: values.getAll('assetIds'), dialogue: lines.map(function (line) { var at = line.indexOf(':'); return { speaker: line.slice(0, at).trim(), line: line.slice(at + 1).trim() }; })
     } }) }).then(function (payload) {
       state = payload.manifest;
@@ -1086,13 +1139,27 @@
     return '<option value="' + escapeHtml(value) + '"' + (String(value) === String(selected) ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
   }
 
+  function narrativeProposal(shot) {
+    var entries = Array.isArray(shot.narrativeStates) ? shot.narrativeStates : [];
+    var transitions = { direct: 'Action sans interruption', ellipsis: 'Ellipse assumée', unspecified: 'Transition non précisée' };
+    if (!entries.length && shot.narrativeTransition === undefined && shot.narrativeStates === undefined) return '';
+    return '<section class="narrative-proposal"><strong>Continuité narrative proposée</strong>' +
+      (shot.narrativeTransition !== undefined ? '<p>' + escapeHtml(transitions[shot.narrativeTransition] || 'Transition à vérifier') + '</p>' : '') +
+      (shot.narrativeStates !== undefined && !entries.length ? '<p>Aucun état déclaré dans cette proposition.</p>' : '') +
+      entries.map(function (entry) {
+        entry = entry || {};
+        var asset = (state.assets || []).find(function (item) { return item.id === entry.assetId; });
+        return '<p><b>' + escapeHtml(asset ? asset.name : 'Référence à vérifier') + ' · ' + escapeHtml(entry.property) + '</b><br>Début : ' + escapeHtml(entry.before || 'inconnu') + '<br>Fin : ' + escapeHtml(entry.after || 'inconnu') + '</p>';
+      }).join('') + '</section>';
+  }
+
   function editableFields(approval) {
     var operation = approval.operation || {};
     var args = operation.args || {};
     if (operation.name === "create_screenplay") {
       return '<div class="screenplay-proposal">' + (args.sequences || []).map(function (sequence) {
         return '<h3>' + escapeHtml(sequence.title) + '</h3><p>' + escapeHtml(sequence.summary || '') + '</p>' + (sequence.shots || []).map(function (shot) {
-          return '<article><strong>' + escapeHtml(shot.title) + ' · ' + (Number(shot.durationMs) / 1000) + ' s</strong><p>' + escapeHtml(shot.description) + '</p>' + (shot.dialogue || []).map(function (line) { return '<p><em>' + escapeHtml(line.speaker) + ' : ' + escapeHtml(line.line) + '</em></p>'; }).join('') + '</article>';
+          return '<article><strong>' + escapeHtml(shot.title) + ' · ' + (Number(shot.durationMs) / 1000) + ' s</strong><p>' + escapeHtml(shot.description) + '</p>' + (shot.dialogue || []).map(function (line) { return '<p><em>' + escapeHtml(line.speaker) + ' : ' + escapeHtml(line.line) + '</em></p>'; }).join('') + narrativeProposal(shot) + '</article>';
         }).join('');
         }).join('') + '</div>';
     }
@@ -1107,10 +1174,10 @@
     }
     if (operation.name === "update_shot") {
       var currentShot = (state.shots || []).find(function (shot) { return shot.id === args.shotId; });
-      return '<div class="screenplay-proposal"><h3>' + escapeHtml(currentShot && currentShot.title || 'Plan') + '</h3>' + Object.keys(args.patch || {}).map(function (key) { var labels = { title: 'Titre', description: 'Action', durationMs: 'Durée (ms)', continuity: 'Raccord', dialogue: 'Dialogues', assetIds: 'Références' }; return '<p><b>' + escapeHtml(labels[key] || key) + '</b><br>' + escapeHtml(typeof args.patch[key] === 'object' ? JSON.stringify(args.patch[key]) : args.patch[key]) + '</p>'; }).join('') + '</div>';
+      return '<div class="screenplay-proposal"><h3>' + escapeHtml(currentShot && currentShot.title || 'Plan') + '</h3>' + narrativeProposal(args.patch || {}) + Object.keys(args.patch || {}).filter(function (key) { return key !== 'narrativeStates' && key !== 'narrativeTransition'; }).map(function (key) { var labels = { title: 'Titre', description: 'Action', durationMs: 'Durée (ms)', continuity: 'Raccord', dialogue: 'Dialogues', assetIds: 'Références' }; return '<p><b>' + escapeHtml(labels[key] || key) + '</b><br>' + escapeHtml(typeof args.patch[key] === 'object' ? JSON.stringify(args.patch[key]) : args.patch[key]) + '</p>'; }).join('') + '</div>';
     }
     if (operation.name === "create_shot") {
-      return '<div class="choice-fields"><div class="choice-field"><label>Durée du plan</label><select data-choice-field="durationMs">' + [1000, 2000, 4000, 6000, 8000].map(function (ms) { return option(ms, ms / 1000 + " seconde" + (ms > 1000 ? "s" : ""), args.durationMs || 4000); }).join("") + '</select></div>' +
+      return narrativeProposal(args) + '<div class="choice-fields"><div class="choice-field"><label>Durée du plan</label><select data-choice-field="durationMs">' + [1000, 2000, 4000, 6000, 8000].map(function (ms) { return option(ms, ms / 1000 + " seconde" + (ms > 1000 ? "s" : ""), args.durationMs || 4000); }).join("") + '</select></div>' +
         '<div class="choice-field"><label>Stratégie</label><select data-choice-field="strategy">' + option("image", "Image / pose", args.strategy || "image") + option("image_sequence", "Séquence d’images", args.strategy) + option("first_last_video", "Première → dernière image", args.strategy) + option("micro_video", "Vidéo courte", args.strategy) + '</select></div></div>';
     }
     if (operation.name === "update_asset") {
@@ -1270,6 +1337,23 @@
   }
 
   document.addEventListener("click", function (event) {
+    if (event.target.closest('[data-add-narrative-state]')) {
+      var stateForm = event.target.closest('[data-shot-editor]');
+      var rows = stateForm.querySelector('[data-narrative-states]');
+      if (rows.children.length >= 20) { stateForm.querySelector('[data-shot-save-status]').textContent = 'Maximum 20 états par plan.'; return; }
+      rows.insertAdjacentHTML('beforeend', narrativeStateRow());
+      rows.lastElementChild.querySelector('select').focus();
+      captureShotDraft(stateForm);
+      return;
+    }
+    if (event.target.closest('[data-remove-narrative-state]')) {
+      var stateRow = event.target.closest('[data-narrative-state]');
+      var parentForm = stateRow.closest('[data-shot-editor]');
+      stateRow.remove();
+      captureShotDraft(parentForm);
+      parentForm.querySelector('[data-add-narrative-state]').focus();
+      return;
+    }
     var editShot = event.target.closest('[data-edit-shot]');
     if (editShot) { selectedStoryboardShotId = editShot.getAttribute('data-edit-shot'); renderStoryboardWorkspace(); return; }
     var restoreVersion = event.target.closest('[data-restore-version]');
@@ -1290,6 +1374,8 @@
             description: old.description,
             durationMs: old.durationMs,
             continuity: old.continuity || 'cut',
+            narrativeStates: old.narrativeStates || [],
+            narrativeTransition: old.narrativeTransition || 'unspecified',
             dialogue: old.dialogue || [],
             assetIds: old.assetIds || [],
           },
