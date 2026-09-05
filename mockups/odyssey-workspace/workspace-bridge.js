@@ -671,7 +671,25 @@
       '<label>Dialogues — une ligne « Personnage : réplique »<textarea name="dialogue" rows="3">' + escapeHtml(dialogue) + '</textarea></label>' +
       '<fieldset><legend>Personnages et décors liés</legend>' + (state.assets || []).map(function (asset) { return '<label class="storyboard-reference"><input type="checkbox" name="assetIds" value="' + escapeHtml(asset.id) + '"' + ((current.assetIds || []).includes(asset.id) ? ' checked' : '') + '>' + escapeHtml(asset.name) + '</label>'; }).join('') + '</fieldset>' +
       '<button class="choice-action primary" type="submit">Enregistrer le texte</button><p class="hint">Une nouvelle version du texte est conservée. L’image se régénère séparément.</p><p data-shot-save-status role="status"></p></form>' +
-      '<details class="storyboard-history"><summary>Historique du texte (' + (shot.history || []).length + ')</summary>' + (shot.history || []).slice().reverse().map(function (old) { return '<article><strong>v' + old.version + ' · ' + escapeHtml(old.title) + '</strong><p>' + escapeHtml(old.description) + '</p><small>' + old.durationMs / 1000 + ' s</small></article>'; }).join('') + '</details>' +
+      '<details class="storyboard-history"><summary>Historique du texte (' + (shot.history || []).length + ')</summary>' +
+      ((shot.history || []).length
+        ? (shot.history || []).slice().reverse().map(function (old) {
+            // Comparer sert à décider : on montre ce qui diffère de la version
+            // courante, pas le texte entier à relire à l'œil.
+            var changes = [];
+            if ((old.title || '') !== (shot.title || '')) changes.push('titre');
+            if ((old.description || '') !== (shot.description || '')) changes.push('action');
+            if (old.durationMs !== shot.durationMs) changes.push('durée ' + (old.durationMs / 1000) + ' s au lieu de ' + (shot.durationMs / 1000) + ' s');
+            if ((old.continuity || 'cut') !== (shot.continuity || 'cut')) changes.push('raccord');
+            if (JSON.stringify(old.dialogue || []) !== JSON.stringify(shot.dialogue || [])) changes.push('dialogues');
+            if ((old.assetIds || []).slice().sort().join() !== (shot.assetIds || []).slice().sort().join()) changes.push('références');
+            return '<article><strong>v' + old.version + ' · ' + escapeHtml(old.title || 'Sans titre') + '</strong>' +
+              '<p>' + escapeHtml(old.description || '') + '</p>' +
+              '<small>' + (changes.length ? 'Diffère de la version actuelle : ' + escapeHtml(changes.join(', ')) + '.' : 'Identique à la version actuelle.') + '</small>' +
+              (changes.length ? '<button type="button" class="choice-action" data-restore-version="' + escapeHtml(shot.id) + '" data-version="' + old.version + '">Restaurer comme nouvelle version</button>' : '') +
+              '</article>';
+          }).join('')
+        : '<p class="hint">Aucune version antérieure : l’historique commence au premier enregistrement.</p>') + '</details>' +
       '<details class="storyboard-media-tools"><summary>Image du plan et génération séparée</summary>' + shotCard(shot) + '</details></div>';
   }
 
@@ -1246,6 +1264,39 @@
   document.addEventListener("click", function (event) {
     var editShot = event.target.closest('[data-edit-shot]');
     if (editShot) { selectedStoryboardShotId = editShot.getAttribute('data-edit-shot'); renderStoryboardWorkspace(); return; }
+    var restoreVersion = event.target.closest('[data-restore-version]');
+    if (restoreVersion) {
+      var restoreShotId = restoreVersion.getAttribute('data-restore-version');
+      var wanted = Number(restoreVersion.getAttribute('data-version'));
+      var target = (state.shots || []).find(function (item) { return item.id === restoreShotId; });
+      var old = (target && target.history || []).find(function (item) { return item.version === wanted; });
+      if (!target || !old) return;
+      restoreVersion.disabled = true;
+      // Restaurer crée une nouvelle version : l'historique n'est jamais réécrit.
+      api('/api/shots/' + encodeURIComponent(restoreShotId), {
+        method: 'PATCH',
+        body: JSON.stringify({
+          baseVersion: target.version,
+          patch: {
+            title: old.title,
+            description: old.description,
+            durationMs: old.durationMs,
+            continuity: old.continuity || 'cut',
+            dialogue: old.dialogue || [],
+            assetIds: old.assetIds || [],
+          },
+        }),
+      }).then(function (payload) {
+        state = payload.manifest;
+        delete shotDrafts[restoreShotId];
+        renderStoryboardWorkspace();
+        renderPanels();
+      }).catch(function (error) {
+        restoreVersion.disabled = false;
+        restoreVersion.title = error.message;
+      });
+      return;
+    }
     var discardDraft = event.target.closest('[data-discard-draft]');
     if (discardDraft) {
       delete shotDrafts[discardDraft.getAttribute('data-discard-draft')];

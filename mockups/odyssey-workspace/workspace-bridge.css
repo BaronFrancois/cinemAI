@@ -2582,3 +2582,23 @@ html:not(.bridge-ready) [data-thread] {
   font-size: 11px;
   cursor: pointer;
 }
+
+.storyboard-history article {
+  display: grid;
+  gap: 4px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.storyboard-history article:last-child { border-bottom: 0; }
+
+.storyboard-history article p {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.storyboard-history article small { color: var(--cobalt-hi); font-size: 11px; }
+
+.storyboard-history article button { justify-self: start; margin-top: 3px; }
