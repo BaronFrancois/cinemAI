@@ -98,6 +98,28 @@ falls back to the keyframe — which is anchored on approved sheets — beyond
 **An animatic costs nothing.** Approved keyframes play back at each shot's real duration, so
 rhythm, action legibility and continuity are validated *before* paying for video.
 
+## Storyboard workspace
+
+Open **Storyboard** to see the film as image cards with the action and duration beneath each frame.
+Select a plan to edit its action, dialogue, duration, continuity and linked references. Saving creates
+one new text version (the latest 50 prior versions remain readable) and never regenerates a media file.
+Concurrent edits are rejected using the shot version. Image generation and approval remain separate.
+
+For a structured project without a breakdown, **Proposer le scénario** asks the agent for a complete
+`create_screenplay` proposal: up to 12 sequences and 24 shots, applied atomically after human approval.
+Existing films use targeted `update_shot` proposals instead. The offline mock does not write creative
+content; the live agent uses the configured Google backend.
+
+The **Continuity** panel checks duration totals, missing/unapproved references and frames, location
+changes on continuous cuts, dialogue speakers and frame/scenario version mismatches. This is structural
+validation, **not computer vision**: costume, identity and prop consistency still need visual review.
+Older images with no source version are explicitly marked unknown. Revalidating a frame records the
+current script version without generating another image.
+
+- Review API: `GET /api/storyboard/review` (read-only, no provider call).
+- Manual edit API: `PATCH /api/shots/:id` with `{ baseVersion, patch }`.
+- Editable design: [CinemAI storyboard workspace](https://www.figma.com/design/wuoR5ZeF6ReBvmd1kuclNN).
+
 ## Architecture
 
 ```
@@ -128,7 +150,7 @@ git clone https://github.com/BaronFrancois/cinemAI.git
 cd cinemAI
 cp .env.example .env      # then fill in the values below
 node server.mjs           # http://127.0.0.1:4175
-npm test                  # 69 tests, no network access required
+npm test                  # offline tests, no provider access required
 ```
 
 ### Configuration

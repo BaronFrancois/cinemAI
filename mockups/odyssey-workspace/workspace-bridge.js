@@ -185,7 +185,7 @@
 
   function shotCard(shot) {
     var media = mediaForShot(shot.id).filter(function (item) { return item.kind === "image"; });
-    var latest = media.length ? media[media.length - 1] : null;
+    var latest = media.find(isMediaApproved) || media[media.length - 1] || null;
     var linked = (state.assets || []).filter(function (asset) {
       return (shot.assetIds || []).indexOf(asset.id) !== -1;
     });
@@ -205,9 +205,10 @@
       frame +
       '<div class="asset-generation-controls"><label class="choice-field asset-prompt"><span>Direction supplémentaire</span><textarea rows="2" data-shot-image-prompt placeholder="Ex. cadrage plus serré, contre-plongée…"></textarea></label>' +
       '<label class="choice-field asset-size"><span>Résolution</span><select data-shot-image-size><option value="512">512 · brouillon</option><option value="1K" selected>1K · standard</option><option value="2K">2K · détail</option><option value="4K">4K · final</option></select></label></div>' +
+      '<label class="choice-field"><span>Format de l’image</span><select data-shot-image-ratio>' + ['16:9','9:16','1:1','4:3','3:4'].map(function (ratio) { return option(ratio, ratio, state.project.aspectRatio || '16:9'); }).join('') + '</select></label>' +
       '<div class="asset-library-actions"><button type="button" class="choice-action primary" data-generate-shot-image="' + escapeHtml(shot.id) + '">' + (latest ? "Régénérer l’image du plan" : "Générer l’image du plan") + '</button><span class="hint" data-image-cost>' + escapeHtml(imageCostLabel("1K")) + ' · ' + escapeHtml(referenceHint) + '.</span></div>' +
-      (media.length > 1 ? '<div class="shot-media-history">' + media.slice(0, -1).reverse().map(function (item) {
-        return '<a href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener"><img src="' + escapeHtml(item.url) + '" alt="Version ' + escapeHtml(item.version) + '" loading="lazy"></a>';
+      (media.length > 1 ? '<div class="shot-media-history">' + media.slice().reverse().map(function (item) {
+        return '<button type="button" data-approve-media="' + escapeHtml(item.id) + '" data-approved="0" title="Utiliser la version ' + escapeHtml(item.version) + '"><img src="' + escapeHtml(item.url) + '" alt="Version ' + escapeHtml(item.version) + '" loading="lazy"><span>' + (isMediaApproved(item) ? "✓ Retenue" : "Utiliser v" + escapeHtml(item.version)) + '</span></button>';
       }).join("") + '</div>' : "") +
       shotVideoBlock(shot, media.length > 0) +
       '<div class="choice-error hint" data-shot-image-error hidden></div>' +
@@ -225,10 +226,14 @@
     var hint = !hasKeyframe
       ? "Générez d’abord l’image de ce plan."
       : (paired ? "Début et fin : raccord imposé avec le plan suivant." : "Frame de début seule : le modèle choisit la fin.") + " Durée ≈ " + seconds + " s.";
+    var cost = mediaConfig && mediaConfig.video ? mediaConfig.video.estimatedCostUsdPerSecond : null;
     return '<div class="shot-video">' +
+      '<label class="choice-field"><span>Durée demandée du clip</span><select data-video-seconds>' + Array.from({length:8}, function (_, i) { return option(String(i+3), (i+3) + ' s' + (cost === null ? '' : ' · ≈ ' + ((i+3)*cost).toFixed(2) + ' USD'), String(seconds)); }).join('') + '</select></label>' +
+      '<p class="hint">Par défaut : durée du plan, ramenée à 3–10 s. Ce choix ne modifie pas le scénario. Durée finale à vérifier après génération. Le cadrage est guidé par l’image retenue ; aucun format vidéo forcé n’est transmis par cet adaptateur.</p>' +
+      '<label class="choice-field"><span>Direction du mouvement</span><textarea data-video-prompt rows="2" placeholder="Ex. travelling lent, conserver le costume…"></textarea></label>' +
       (latest ? '<video controls preload="metadata" src="' + escapeHtml(latest.url) + '"></video>' : "") +
       '<div class="asset-library-actions"><button type="button" class="choice-action" data-generate-shot-video="' + escapeHtml(shot.id) + '"' + (hasKeyframe ? "" : " disabled") + '>' +
-      (latest ? "Régénérer le clip" : "Animer ce plan") + '</button><span class="hint">' + escapeHtml(hint) + '</span></div>' +
+      (latest ? "Régénérer le clip" : "Générer la vidéo de ce plan") + '</button><span class="hint">' + escapeHtml(hint) + '</span></div>' +
       '<div class="choice-error hint" data-shot-video-error hidden></div>' +
     '</div>';
   }
@@ -512,7 +517,7 @@
         index: index,
         title: shot.title || "Plan sans titre",
         description: shot.description || "",
-        durationMs: Math.max(400, shot.durationMs || 4000),
+        durationMs: Math.max(250, shot.durationMs || 4000),
         continuity: shot.continuity || "cut",
         url: image ? image.url : null,
         approved: image ? isMediaApproved(image) : false
@@ -529,7 +534,7 @@
         '<small>' + String(frame.index + 1).padStart(2, "0") + '</small></button>';
     }).join("");
     return '<header class="workspace-panel-head"><div><span class="field-label">Animatique</span>' +
-      '<h2>Storyboard animé</h2><p class="hint">' + frames.length + ' plans · ' + Math.round(total / 100) / 10 + ' s' +
+      '<h2>Prévisualisation du storyboard</h2><p class="hint">' + frames.length + ' plans · ' + Math.round(total / 100) / 10 + ' s' +
       (missing ? ' · ' + missing + ' plan' + (missing > 1 ? 's' : '') + ' sans image' : '') + ' · aucune génération, aucun coût</p></div>' +
       '<div class="asset-review-head-actions"><button type="button" class="workspace-expand" data-workspace-fullscreen aria-pressed="false">Plein écran</button>' +
       '<button type="button" class="workspace-close" data-close-workspace aria-label="Fermer">×</button></div></header>' +
@@ -629,6 +634,7 @@
         '<div class="storyboard-tile-actions">' +
         '<button type="button" data-move-shot="' + escapeHtml(shot.id) + '" data-direction="-1" title="Déplacer avant"' + (index === 0 ? ' disabled' : '') + '>◀</button>' +
         '<button type="button" data-move-shot="' + escapeHtml(shot.id) + '" data-direction="1" title="Déplacer après"' + (index === shots.length - 1 ? ' disabled' : '') + '>▶</button>' +
+        '<label>Vignettes <select data-split-count aria-label="Nombre de vignettes"><option>2</option><option>3</option><option>4</option></select></label><button type="button" data-split-shot="' + escapeHtml(shot.id) + '" title="Conserve la durée totale ; précisez ensuite chaque action et générez ses images">Décomposer</button>' +
         '<button type="button" data-duplicate-shot="' + escapeHtml(shot.id) + '" title="Dupliquer ce plan">Dupliquer</button>' +
         '<button type="button" data-delete-shot="' + escapeHtml(shot.id) + '" title="Supprimer, récupérable">Supprimer</button>' +
         '</div></article>';
@@ -898,6 +904,7 @@
     if (panes.decors) panes.decors.innerHTML = contextPane("decors", soundContext(), "Son après verrouillage image");
     if (panes.export) panes.export.innerHTML = contextPane("export", exportContext(), "Options de livraison");
     if (workspaceMode === "asset" && activeAssetId) renderAssetInspector(activeAssetId);
+    if (workspaceMode === "video") renderVideoWorkspace();
     if (workspaceMode === "export") renderExportWorkspace();
     if (workspaceMode === "storyboard") renderStoryboardWorkspace();
   }
@@ -965,14 +972,20 @@
     var conversation = conversationPane();
     var panel = workspacePanel();
     if (!conversation || !panel) return;
+    var sameMode = workspaceMode === mode;
+    var scroll = sameMode ? panel.scrollTop : 0;
+    if (!sameMode) conversation.classList.remove("workspace-minimized");
     workspaceMode = mode;
-    panel.innerHTML = html;
+    panel.setAttribute("data-workspace-mode", mode);
+    panel.innerHTML = '<button type="button" class="workspace-minimize" data-minimize-workspace aria-label="Réduire l’atelier" title="Réduire l’atelier">−</button>' + html;
+    var dock = conversation.querySelector(".chat-dock-head");
+    if (dock && !dock.querySelector('[data-restore-workspace]')) dock.insertAdjacentHTML('afterbegin', '<button type="button" class="workspace-restore" data-restore-workspace aria-label="Restaurer l’atelier">+ Atelier</button>');
     conversation.classList.add("workspace-focused");
     conversation.classList.remove("workspace-maximized");
     applyWorkspaceSplit(workspaceSplit);
     var attachedContext = document.querySelector(".ctx-strong");
     if (attachedContext && contextLabel) attachedContext.textContent = contextLabel;
-    panel.scrollTop = 0;
+    panel.scrollTop = scroll;
   }
 
   function closeWorkspacePanel() {
@@ -982,7 +995,7 @@
     workspaceMode = "conversation";
     activeVariantKey = null;
     activeMediaId = null;
-    if (conversation) conversation.classList.remove("workspace-focused", "workspace-maximized");
+    if (conversation) conversation.classList.remove("workspace-focused", "workspace-maximized", "workspace-minimized");
     if (panel) panel.innerHTML = "";
     refreshContextLabel();
   }
@@ -1048,7 +1061,7 @@
     }).join("");
     var history = selectedVersions.length > 1
       ? '<details class="variant-history"><summary>Comparer les versions (' + selectedVersions.length + ')</summary><div>' + selectedVersions.slice().reverse().map(function (item) {
-          return '<a href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener"><img src="' + escapeHtml(item.url) + '" alt="Version ' + escapeHtml(item.variantVersion || item.version) + '"><span>v' + escapeHtml(item.variantVersion || item.version) + '</span></a>';
+          return '<button type="button" data-select-asset-media="' + escapeHtml(item.id) + '" data-asset-id="' + escapeHtml(asset.id) + '"><img src="' + escapeHtml(item.url) + '" alt="Version ' + escapeHtml(item.variantVersion || item.version) + '"><span>v' + escapeHtml(item.variantVersion || item.version) + '</span></button>';
         }).join("") + '</div></details>'
       : '<span class="variant-history-empty">Aucune version précédente pour cette image.</span>';
     var hero = selected || anchor;
@@ -1063,9 +1076,10 @@
           '</figure><div class="asset-filmstrip">' + filmstrip + '</div></div>' +
           '<aside class="asset-review-meta">' +
             (anchor ? '<section class="asset-meta-source"><span class="context-kicker">Source</span><div><img src="' + escapeHtml(anchor.url) + '" alt="Planche de référence"><span><strong>Planche v' + escapeHtml(anchor.version) + '</strong><em>' + (isMediaApproved(anchor) ? "Approuvée" : "Provisoire") + '</em><a href="' + escapeHtml(anchor.url) + '" target="_blank" rel="noopener">Ouvrir la planche</a></span></div></section>' : '') +
+            (hero ? '<section class="asset-media"><button type="button" class="choice-action primary" data-approve-media="' + escapeHtml(hero.id) + '" data-approved="0">' + (isMediaApproved(hero) ? '✓ Version retenue' : 'Utiliser cette version') + '</button>' + (hero.purpose === 'character_consistency' ? ['angles','postures','emotions'].map(function (key) { return '<label><input type="checkbox" data-media-review="' + key + '"' + (hero.review && hero.review[key] ? ' checked' : '') + '> ' + ({angles:'Angles',postures:'Postures',emotions:'Émotions'})[key] + ' vérifiés</label>'; }).join('') : '') + '<p class="choice-error hint" data-media-approval-error hidden></p></section>' : '') +
             '<section class="asset-meta-fact"><span>Catégorie</span><strong>' + escapeHtml(assetTypeLabel(asset.type)) + '</strong><small>' + escapeHtml(asset.description || "Identité visuelle principale") + '</small></section>' +
             '<section class="asset-meta-fact"><span>Statut</span><strong class="asset-status-line">' + (anchor && isMediaApproved(anchor) ? "Approuvée" : "À vérifier") + '</strong></section>' +
-            '<section class="asset-meta-versions"><span class="context-kicker">Versions</span>' + (assetVersions.length ? assetVersions.slice(0, 4).map(function (item, index) { return '<button type="button" data-select-asset-media="' + escapeHtml(item.id) + '" data-asset-id="' + escapeHtml(asset.id) + '"><strong>v' + escapeHtml(item.version) + '</strong><small>' + (index === 0 ? "Courante" : "Disponible") + '</small></button>'; }).join("") : '<small>Aucune version.</small>') + '</section>' +
+            '<section class="asset-meta-versions"><span class="context-kicker">Versions</span>' + (assetVersions.length ? assetVersions.map(function (item, index) { return '<button type="button" data-select-asset-media="' + escapeHtml(item.id) + '" data-asset-id="' + escapeHtml(asset.id) + '"><strong>v' + escapeHtml(item.version) + '</strong><small>' + (isMediaApproved(item) ? "Retenue" : "Disponible") + '</small></button>'; }).join("") : '<small>Aucune version.</small>') + '</section>' +
             '<section class="asset-meta-command" data-variant-command><div class="variant-command-title"><span>Modification ciblée</span><strong>' + escapeHtml(label) + '</strong>' + (selected && selected.variantKey ? '<em>v' + escapeHtml(selected.variantVersion || selectedVersions.length) + '</em>' : '<em>À générer</em>') + '</div>' +
               '<textarea rows="3" data-variant-prompt placeholder="Ex. conserver le costume, rendre le regard plus calme…"></textarea>' +
               '<label><span>Résolution</span><select data-variant-size><option value="512">512 · brouillon</option><option value="1K" selected>1K · standard</option><option value="2K">2K · détail</option><option value="4K">4K · final</option></select></label>' +
@@ -1084,6 +1098,14 @@
 
   function exportOption(key, value, label) {
     return '<button type="button" class="export-option' + (String(exportSettings[key]) === String(value) ? ' selected' : '') + '" data-export-key="' + escapeHtml(key) + '" data-export-value="' + escapeHtml(value) + '">' + escapeHtml(label || value) + '</button>';
+  }
+
+  function renderVideoWorkspace() {
+    var shots = state.shots || [];
+    showWorkspacePanel('<section class="video-workspace"><header class="workspace-panel-head"><div><span class="context-kicker">Production vidéo</span><h2>Du storyboard aux clips</h2><p>Prévisualisez le rythme, choisissez l’image de chaque plan, puis lancez les clips individuellement. Chaque génération conserve les versions précédentes.</p></div><button type="button" class="choice-action" data-open-animatic>▶ Prévisualiser</button></header>' +
+      (shots.length ? shots.map(function (shot) { var frame = storyboardFrame(shot); return '<article class="shot-card" data-shot-card="' + escapeHtml(shot.id) + '"><h3>' + escapeHtml(shot.title) + '</h3><p>' + escapeHtml(shot.description) + '</p>' +
+        (frame ? '<img class="video-source" src="' + escapeHtml(frame.url) + '" alt="Image retenue"><p class="hint">Image v' + escapeHtml(frame.version) + (frame.width && frame.height ? ' · ' + frame.width + ' × ' + frame.height : '') + '</p>' : '') +
+        '<button type="button" class="choice-action" data-edit-shot="' + escapeHtml(shot.id) + '">Modifier le plan et son image</button>' + shotVideoBlock(shot, !!frame) + '</article>'; }).join('') : '<p>Créez d’abord le scénario dans Storyboard.</p>') + '</section>', 'video', 'Production vidéo');
   }
 
   function renderExportWorkspace() {
@@ -1337,6 +1359,15 @@
   }
 
   document.addEventListener("click", function (event) {
+    if (event.target.closest('[data-minimize-workspace]')) {
+      stopAnimatic(); conversationPane().classList.add('workspace-minimized');
+      conversationPane().querySelector('[data-restore-workspace]').focus(); return;
+    }
+    if (event.target.closest('[data-restore-workspace]')) {
+      conversationPane().classList.remove('workspace-minimized');
+      conversationPane().querySelector('[data-minimize-workspace]').focus(); return;
+    }
+
     if (event.target.closest('[data-add-narrative-state]')) {
       var stateForm = event.target.closest('[data-shot-editor]');
       var rows = stateForm.querySelector('[data-narrative-states]');
@@ -1413,11 +1444,14 @@
       renderStoryboardWorkspace();
       return;
     }
-    var storyboardAction = event.target.closest('[data-move-shot],[data-duplicate-shot],[data-delete-shot],[data-restore-shot]');
+    var storyboardAction = event.target.closest('[data-split-shot],[data-move-shot],[data-duplicate-shot],[data-delete-shot],[data-restore-shot]');
     if (storyboardAction) {
       var move = storyboardAction.getAttribute('data-move-shot');
       var payload = null;
-      if (move) {
+      if (storyboardAction.hasAttribute('data-split-shot')) {
+        var source = state.shots.find(function (shot) { return shot.id === storyboardAction.getAttribute('data-split-shot'); });
+        payload = { operation: 'split_shot', args: { shotId: source.id, baseVersion: source.version, count: Number(storyboardAction.closest('.storyboard-tile').querySelector('[data-split-count]').value) } };
+      } else if (move) {
         var ids = (state.shots || []).map(function (shot) { return shot.id; });
         var from = ids.indexOf(move);
         var to = from + Number(storyboardAction.getAttribute('data-direction'));
@@ -1462,6 +1496,7 @@
       if (typeof window.odysseyActivate === "function") window.odysseyActivate(tab);
       if (tab === "export") renderExportWorkspace();
       else if (tab === "script") { selectedStoryboardShotId = null; renderStoryboardWorkspace(); }
+      else if (tab === "production") renderVideoWorkspace();
       else closeWorkspacePanel();
       setTimeout(function () { unifyConversationSurface(); renderApprovals(activeThread()); }, 0);
       return;
@@ -1671,7 +1706,7 @@
       if (videoError) { videoError.hidden = true; videoError.textContent = ""; }
       api("/api/shots/" + encodeURIComponent(videoShotId) + "/videos/generate", {
         method: "POST",
-        body: JSON.stringify({ confirm: "GENERATE_VIDEO" })
+        body: JSON.stringify({ confirm: "GENERATE_VIDEO", seconds: Number(videoCard.querySelector("[data-video-seconds]").value), prompt: videoCard.querySelector("[data-video-prompt]").value })
       }).then(function (payload) {
         state = payload.manifest;
         renderPanels();
@@ -1740,6 +1775,7 @@
         body: JSON.stringify({
           confirm: "GENERATE_IMAGE",
           imageSize: shotSize ? shotSize.value : "1K",
+          aspectRatio: shotCardNode.querySelector("[data-shot-image-ratio]").value,
           prompt: shotPrompt ? shotPrompt.value : ""
         })
       }).then(function (payload) {
@@ -1860,6 +1896,17 @@
     window.odysseyActivate = wrapped;
   }
 
+  function showModelStatus() {
+    var dock = conversationPane() && conversationPane().querySelector('.composer-wrap');
+    if (!dock) return;
+    var label = document.createElement('div');
+    label.className = 'llm-connection-status'; label.setAttribute('role', 'status');
+    label.textContent = 'Vérification du serveur…'; dock.prepend(label);
+    api('/api/health').then(function (health) {
+      label.textContent = health.mode === 'mock' ? 'Simulation — aucun modèle IA connecté' : 'IA configurée · ' + health.model + ' · Google Cloud (connexion distante)';
+    }).catch(function () { label.textContent = 'Serveur indisponible — vérifiez l’adresse ouverte.'; });
+  }
+
   function start() {
     var app = document.querySelector(".app");
     if (app) {
@@ -1869,6 +1916,7 @@
     var rail = document.querySelector(".rail");
     if (rail) rail.setAttribute("aria-hidden", "true");
     workspacePanel();
+    showModelStatus();
     hookTabActivation();
     document.addEventListener("click", function () { setTimeout(refreshContextLabel, 0); }, true);
     load();

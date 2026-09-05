@@ -862,7 +862,7 @@ export async function callGemini({
           // Un résultat de télémétrie occupe du contexte, et les jetons de
           // réflexion comptent dans cette limite : trop bas, le modèle épuise
           // son budget avant d'avoir rédigé sa réponse.
-          maxOutputTokens: analytics ? 2_400 : 900,
+          maxOutputTokens: analytics ? 2_400 : 8_192,
         },
       }),
       signal: AbortSignal.timeout(config.requestTimeoutMs),
@@ -1071,6 +1071,13 @@ export function createCinemaiServer({
           return;
         }
         sendJson(response, 200, {
+          video: {
+            provider: config.mode === "google" ? "google" : "mock",
+            model: config.omniModel || "gemini-omni-1.1-flash",
+            minSeconds: OMNI_MIN_SECONDS, maxSeconds: OMNI_MAX_SECONDS,
+            estimatedCostUsdPerSecond: config.mode === "google" ? (config.videoCostUsdPerSecond ?? 0.15) : 0,
+            formatMode: "reference-image",
+          },
           image: {
             provider: config.mode === "google" ? "google" : "mock",
             model: config.imageModel || "gemini-3.1-flash-image",
@@ -1199,6 +1206,10 @@ export function createCinemaiServer({
           sendJson(response, 400, { error: "La génération vidéo exige une confirmation explicite.", requestId });
           return;
         }
+        if (payload.seconds !== undefined && (!Number.isInteger(payload.seconds) || payload.seconds < OMNI_MIN_SECONDS || payload.seconds > OMNI_MAX_SECONDS)) {
+          sendJson(response, 400, { error: `La durée demandée doit être comprise entre ${OMNI_MIN_SECONDS} et ${OMNI_MAX_SECONDS} secondes.`, requestId });
+          return;
+        }
         const startMedia = referenceShotImage(snapshot, shot.id);
         if (!startMedia) {
           sendJson(response, 409, { error: "Ce plan n'a pas encore d'image de storyboard à animer.", requestId });
@@ -1238,7 +1249,7 @@ export function createCinemaiServer({
           sendJson(response, 409, { error: "L'image de storyboard de ce plan est illisible.", requestId });
           return;
         }
-        const seconds = Math.min(
+        const seconds = payload.seconds ?? Math.min(
           OMNI_MAX_SECONDS,
           Math.max(OMNI_MIN_SECONDS, Math.round((shot.durationMs || 4_000) / 1_000)),
         );

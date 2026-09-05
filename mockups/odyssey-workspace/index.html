@@ -3138,7 +3138,9 @@
                 clearTimeout(timeout);
               }
               var payload = await response.json().catch(function () { return {}; });
-              if (!response.ok) throw new Error(payload.error || "Le serveur local n'a pas pu traiter la demande.");
+              if (!response.ok) throw new Error(response.status === 405
+                ? "Cette adresse ne transmet pas les demandes du chat. Ouvrez l’application sur http://127.0.0.1:4175 en local ou sur https://cinemai.fly.dev. Votre texte est conservé ci-dessous."
+                : payload.error || "Le serveur n’a pas pu traiter la demande.");
               wait.innerHTML = '<span class="av av-ai">✦</span><div class="fx col gap6"><p class="prose"></p><span class="chat-source"></span></div>';
               wait.querySelector(".prose").textContent = payload.text;
               wait.querySelector(".chat-source").textContent = payload.mode === "mock" ? "Simulation locale" : payload.model;
@@ -3151,6 +3153,7 @@
                 : error.message || "Le serveur local est indisponible.";
               wait.innerHTML = '<span class="av av-ai">!</span><div class="fx col gap6"><p class="prose chat-error"></p><span class="chat-source">Non envoyé</span></div>';
               wait.querySelector(".chat-error").textContent = message;
+              if (!silent && (input.classList.contains("empty") || !input.textContent.trim())) { input.textContent = txt; input.classList.remove("empty"); }
             } finally {
               sending = false;
               input.removeAttribute("aria-disabled");

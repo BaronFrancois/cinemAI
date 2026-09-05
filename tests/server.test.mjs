@@ -938,6 +938,17 @@ test("shot video uses the next shot keyframe only when continuity is continuous"
       assert.equal(cutBody.media.kind, "video");
       assert.equal(cutBody.media.mimeType, "video/mp4");
 
+      for (const seconds of [2, 11, 3.5, "6"]) {
+        const invalid = await fetch(`${baseUrl}/api/shots/${shotA}/videos/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: "GENERATE_VIDEO", seconds }) });
+        assert.equal(invalid.status, 400);
+      }
+      const custom = await fetch(`${baseUrl}/api/shots/${shotA}/videos/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: "GENERATE_VIDEO", seconds: 9, prompt: "Travelling lent" }) });
+      const customBody = await custom.json();
+      assert.equal(custom.status, 201);
+      assert.equal(customBody.seconds, 9);
+      assert.match(customBody.media.prompt, /Travelling lent/);
+      assert.equal(store.snapshot().shots.find(x => x.id === shotA).durationMs, 6000);
+
       // Déclarer le plan suivant continu fournit la frame de fin.
       await store.decide((await store.propose("update_shot", {
         shotId: shotB, patch: { continuity: "continuous" },

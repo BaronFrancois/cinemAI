@@ -350,3 +350,38 @@ test("shots can be duplicated, deleted recoverably and reordered", async () => {
 
   await assert.rejects(approve(store, "restore_shot", { shotId: "shot_inconnu" }), /corbeille/);
 });
+
+test('subdivision keeps total duration, history and media ownership; rejects stale edits', async () => {
+  const store = createProductionStore({ persist: false });
+  await approve(store, 'set_project', { title: 'Rythme' });
+  const id = (await approve(store, 'create_shot', { title: 'Café', description: 'Préparer le café', durationMs: 4001 })).approval.result.entityId;
+  await store.attachMedia({ id: 'frame_original', targetType: 'shot', targetId: id, kind: 'image', url: '/api/media/frame_original', fileName: 'frame.png', mimeType: 'image/png' });
+  await store.approveMedia('frame_original');
+  const before = store.snapshot();
+  await assert.rejects(store.editStoryboard('split_shot', { shotId: id, baseVersion: 99, count: 3 }), /changé/);
+  assert.deepEqual(store.snapshot(), before);
+  const { manifest } = await store.editStoryboard('split_shot', { shotId: id, baseVersion: 1, count: 3 });
+  assert.equal(manifest.shots.length, 3);
+  assert.equal(manifest.shots.reduce((sum, shot) => sum + shot.durationMs, 0), 4001);
+  assert.equal(manifest.timeline.durationMs, 4001);
+  assert.equal(manifest.shots[0].history[0].durationMs, 4001);
+  assert.equal(manifest.media.length, 1);
+  assert.equal(manifest.media[0].targetId, id);
+  assert.ok(manifest.shots.slice(1).every(shot => !shot.approvedMediaId && !shot.narrativeStates.length));
+});
+
+test('selecting an older image preserves the clip and all image versions', async () => {
+  const store = createProductionStore({ persist: false });
+  await approve(store, 'set_project', { title: 'Versions' });
+  const id = (await approve(store, 'create_shot', { description: 'Se réveiller' })).approval.result.entityId;
+  for (const [mediaId, kind] of [['old','image'], ['new','image'], ['clip','video']]) {
+    await store.attachMedia({ id: mediaId, targetType: 'shot', targetId: id, kind, url: '/api/media/' + mediaId, fileName: mediaId + (kind === 'image' ? '.png' : '.mp4'), mimeType: kind === 'image' ? 'image/png' : 'video/mp4' });
+  }
+  await store.approveMedia('new'); await store.approveMedia('clip'); await store.approveMedia('old');
+  const m = store.snapshot();
+  assert.equal(m.media.length, 3);
+  assert.equal(m.media.find(x => x.id === 'old').status, 'approved');
+  assert.equal(m.media.find(x => x.id === 'new').status, 'ready');
+  assert.equal(m.media.find(x => x.id === 'clip').status, 'approved');
+  assert.equal(m.shots[0].approvedMediaId, 'old');
+});

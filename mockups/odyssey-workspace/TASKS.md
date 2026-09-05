@@ -145,3 +145,15 @@ Déployé sur Fly.io ; endpoints et formulaire vérifiés en ligne en lecture se
 Révision, versions/identifiants des plans et identifiants médias conservés après déploiement.
 Documentation : `docs/narrative-continuity.md`. Analyse du texte libre et des pixels
 restent des lots distincts, non revendiqués dans cette livraison.
+
+## Reprise — Parcours scénario → storyboard → vidéo (5 septembre)
+
+| Tâche | Statut |
+| --- | --- |
+| Corriger l’adresse locale de prévisualisation et rendre le mode du modèle visible | EN COURS |
+| Rétablir le défilement et réduire/restaurer l’atelier | EN COURS |
+| Rechoisir une ancienne image sans supprimer les versions | EN COURS |
+| Décomposer les plans en davantage de vignettes et prévisualiser le rythme | EN COURS |
+| Atelier vidéo direct : durée demandée, référence de format, coût et génération | EN COURS |
+
+Validation : tests isolés et parcours navigateur desktop/mobile, sans génération payante de médias.

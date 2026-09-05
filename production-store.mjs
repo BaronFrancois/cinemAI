@@ -30,6 +30,7 @@ export const OPERATION_NAMES = new Set([
   "add_timeline_clip",
   "add_audio_clip",
   "duplicate_shot",
+  "split_shot",
   "delete_shot",
   "restore_shot",
   "reorder_shots",
@@ -39,7 +40,7 @@ export const OPERATION_NAMES = new Set([
 // Une suppression doit être récupérable : un plan supprimé part à la corbeille
 // avec sa position, pas dans le vide.
 const TRASH_LIMIT = 20;
-const STORYBOARD_OPERATIONS = new Set(["duplicate_shot", "delete_shot", "restore_shot", "reorder_shots"]);
+const STORYBOARD_OPERATIONS = new Set(["split_shot", "duplicate_shot", "delete_shot", "restore_shot", "reorder_shots"]);
 
 const JOB_TRANSITIONS = {
   pending: new Set(["running", "cancelled"]),
@@ -400,6 +401,28 @@ function applyOperation(manifest, operation, now) {
     return { entityType: "shot", entityId: shot.id, tab: "production" };
   }
 
+  if (name === "split_shot") {
+    const source = requireShot(manifest, cleanText(args.shotId, 128));
+    if (args.baseVersion !== source.version) fail("Ce plan a changé. Rechargez-le avant de le découper.", 409);
+    const count = args.count;
+    if (!Number.isInteger(count) || count < 2 || count > 4 || source.durationMs < count * 250) fail("Choisissez 2 à 4 vignettes d’au moins 250 ms.");
+    const index = manifest.shots.indexOf(source);
+    const original = clone(source);
+    const duration = Math.floor(original.durationMs / count);
+    applyOperation(manifest, { name: "update_shot", args: { shotId: source.id, patch: {
+      title: `${original.title} · 1/${count}`, durationMs: duration,
+      narrativeStates: [],
+    } } }, now);
+    const added = Array.from({ length: count - 1 }, (_, i) => ({
+      ...clone(original), id: `shot_${randomUUID()}`, title: cleanText(`${original.title} · ${i + 2}/${count}`, 120),
+      description: original.description, durationMs: i === count - 2 ? original.durationMs - duration * (count - 1) : duration,
+      dialogue: [], narrativeStates: [], narrativeTransition: "unspecified", continuity: "continuous",
+      approvedMediaId: null, status: "draft", version: 1, history: [], createdAt: now(), updatedAt: now(),
+    }));
+    manifest.shots.splice(index + 1, 0, ...added);
+    return { entityType: "shot", entityId: source.id, tab: "script" };
+  }
+
   if (name === "duplicate_shot") {
     const source = requireShot(manifest, cleanText(args.shotId, 128));
     const index = manifest.shots.findIndex((item) => item.id === source.id);
@@ -747,7 +770,7 @@ export function createProductionStore({
         media.review = { angles: true, postures: true, emotions: true, reviewedAt: now() };
       }
       for (const item of manifest.media) {
-        if (item.targetType === media.targetType && item.targetId === media.targetId && item.status === "approved") {
+        if (item.targetType === media.targetType && item.targetId === media.targetId && item.kind === media.kind && (item.variantKey || null) === (media.variantKey || null) && item.status === "approved") {
           item.status = "ready";
           item.approvedAt = null;
         }
@@ -755,7 +778,7 @@ export function createProductionStore({
       media.status = approved ? "approved" : "ready";
       media.approvedAt = approved ? now() : null;
       if (media.targetType === "shot" && media.kind === "image") media.reviewedShotVersion = approved ? target.version : null;
-      target.approvedMediaId = approved ? media.id : null;
+      if (media.kind === "image" && !media.variantKey && (approved || target.approvedMediaId === media.id)) target.approvedMediaId = approved ? media.id : null;
       manifest.revision += 1;
       manifest.updatedAt = now();
       manifest.activity.push({
