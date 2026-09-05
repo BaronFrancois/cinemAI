@@ -1,151 +1,167 @@
 # CinemAI
 
-CinemAI est un atelier local-first pour préparer une séquence générative, suivre ses
-références de continuité et corriger un plan sans relancer toute la production.
+**A production agent for generative film-making, where every expensive step is validated before it is paid for.**
 
-## Première preuve recherchée
+Live app: **https://cinemai.fly.dev**
+Track: **ClickHouse** · Built for *Agentic Cinema: The Blockbuster Hackathon*
 
-Sur une séquence fixture de cinq plans :
+---
 
-1. identifier une incohérence locale ;
-2. préparer une nouvelle version du seul plan concerné ;
-3. conserver les quatre autres plans inchangés ;
-4. lister les dépendances de continuité à revoir.
+## The problem
 
-La qualité des pixels générés et le choix d'un fournisseur vidéo ne font pas encore partie
-de cette première preuve.
+Generating a short film with AI is not hard. Generating one that stays *coherent* is.
 
-## Workspace Odyssey
+In practice the friction is not the pixels, it is everything around them:
 
-La surface canonique actuelle se trouve dans `mockups/odyssey-workspace/`.
+- a character silently drifts between shots — costume details vanish, props change orientation;
+- you pay for a video clip to discover the action never happened;
+- nobody can say what the film has cost so far, or which shot swallowed the budget;
+- rejecting a bad proposal costs far more human time than accepting a good one.
 
-Le workspace propose désormais une régie de projet à gauche et six étapes horizontales : Idée,
-Bible, Storyboard, Vidéo, Son et Export. Le contenu situé sous ces étapes décrit les références,
-l’historique et les actions propres à l’étape active. Changer d’étape modifie uniquement le
-contexte joint au prochain message : la conversation de production reste unique. `index.html`
-fonctionne sans React ni CDN. La clé Gemini reste exclusivement dans le serveur local.
+CinemAI is an agent that drives the whole pipeline — idea, visual bible, storyboard, video —
+with an explicit human gate at each step, and it **measures its own production** so those costs
+stop being invisible.
 
-Pour un nouveau projet, la première réponse est une seule présentation structurée — prémisse,
-genre, direction visuelle, squelette narratif, format et durée. Ces champs peuvent être corrigés
-dans la carte avant validation ; assets, séquences et plans restent bloqués jusque-là.
+## What the agent actually does
 
-### Lancer CinemAI
+The agent never mutates the project directly. It **proposes** operations (create a shot, define a
+character, queue a generation) that a human approves or rejects. Approved operations are applied to
+a manifest that is the single source of truth.
 
-Depuis `H:\0perso\CinemAI` :
+On top of that, the agent can **query its own production telemetry** in ClickHouse to answer
+questions it could not otherwise answer, and to justify what it proposes:
 
-```powershell
-node server.mjs
+> *"Query the production telemetry: how many images were generated and at what total cost?"*
+>
+> → the agent lists the tables through MCP, writes its own SQL, runs it through MCP, and answers
+> *16 image generations for 1.072 USD, plus 3 video clips.*
+
+Those reads are **read-only and need no approval**. Only operations that change the film do.
+
+## Required integrations, and where to verify them
+
+Both are called at runtime, not merely named here.
+
+### Google Cloud — Vertex AI
+
+The agent's reasoning and function calling run on **Vertex AI**, authenticated with a service
+account, not an API key.
+
+| What | Where |
+|---|---|
+| JWT signed with the service-account key, exchanged for an OAuth token | [`vertex-auth.mjs`](vertex-auth.mjs) — `signServiceAccountJwt`, `createVertexAuth` |
+| Vertex endpoint selection | [`vertex-auth.mjs`](vertex-auth.mjs) — `vertexEndpoint` |
+| The agent call itself | [`server.mjs`](server.mjs) — `callGemini`, `Authorization: Bearer` branch |
+
+Startup logs print the active backend, e.g. `LLM : google · gemini-3.5-flash · Vertex AI (project/global)`.
+
+### ClickHouse — official MCP server
+
+Telemetry is **written** over ClickHouse's HTTP interface and **read by the agent through the
+official `mcp-clickhouse` MCP server**, spawned as a child process and driven over stdio JSON-RPC.
+
+| What | Where |
+|---|---|
+| MCP client: handshake, `tools/list`, `tools/call` | [`mcp-client.mjs`](mcp-client.mjs) |
+| Tools exposed to Gemini (`list_production_tables`, `query_production_data`) | [`llm-tools.mjs`](llm-tools.mjs) |
+| Tool-call loop: execute, feed the result back, let the model continue | [`server.mjs`](server.mjs) — `callGemini` |
+| Schema and ingestion | [`clickhouse.mjs`](clickhouse.mjs), [`telemetry.mjs`](telemetry.mjs) |
+| `mcp-clickhouse` installed into the image | [`Dockerfile`](Dockerfile) |
+
+Three tables, all derived from what the pipeline already produces — nothing is invented for the demo:
+
+- `production_events` — the activity log;
+- `media_generations` — one row per generated image or clip, with `cost_usd`, `version`,
+  `chain_depth`, `reanchored`;
+- `approvals` — every agent proposal with `status` and `decision_ms`, the human decision latency.
+
+## How coherence is enforced
+
+This is the part that took the most iteration, and it is measurable.
+
+**References are chained.** A style board conditions the character and location sheets, which
+condition each shot's keyframe, which conditions the video. Images have authority over rendering;
+text only describes the action. When a reference exists, style wording is stripped from the shot
+description so it cannot fight the image.
+
+**Regeneration is anchored.** Re-rendering a character sheet uses the *approved* version as the
+first reference, so identity does not drift. Deliberately redesigning a character requires an
+explicit `restart` flag.
+
+**Shots can chain on the previous clip.** When a shot is marked `continuous`, generation starts
+from the last frame of the previous clip — extracted with ffmpeg — so the cut is exact by
+construction. Measured over three chained clips: the joins are perfect, but fidelity degrades each
+link (a katana flips orientation, costume details simplify). Chaining is therefore capped, and
+falls back to the keyframe — which is anchored on approved sheets — beyond
+`CINEMAI_CHAIN_MAX_LINKS`.
+
+**An animatic costs nothing.** Approved keyframes play back at each shot's real duration, so
+rhythm, action legibility and continuity are validated *before* paying for video.
+
+## Architecture
+
+```
+Browser  ──►  server.mjs  ──►  Vertex AI            (agent reasoning, function calling)
+                   │
+                   ├────────►  Gemini Developer API (images, and video via Omni)
+                   │
+                   ├────────►  mcp-clickhouse ──► ClickHouse Cloud   (agent reads)
+                   │
+                   └────────►  ClickHouse HTTP      (telemetry writes)
 ```
 
-Ouvrir ensuite `http://127.0.0.1:4175`. Le serveur sert l'interface et l'API sur le même
-domaine. Ne plus utiliser `python -m http.server` pour tester le composeur Gemini.
+No npm dependencies. Everything — MCP JSON-RPC, RS256 JWT signing, ClickHouse HTTP — is written
+against the Node standard library.
 
-## Préparer la clé Google
+**Honest scope note:** image and video generation deliberately stay on the Gemini Developer API.
+Omni, the video model this pipeline depends on, is not published on Vertex AI, and its
+`/v1beta/interactions` surface has no Vertex equivalent. The *agent* runs on Google Cloud; the
+media generators do not.
 
-Créer le fichier local qui contiendra la clé :
+## Run it
 
-```powershell
-Copy-Item H:\0perso\CinemAI\.env.example H:\0perso\CinemAI\.env
+Requires Node 20+. `ffmpeg` is optional locally (a macOS AVFoundation fallback exists in
+[`tools/`](tools/README.md)); it is included in the container image.
+
+```bash
+git clone https://github.com/BaronFrancois/cinemAI.git
+cd cinemAI
+cp .env.example .env      # then fill in the values below
+node server.mjs           # http://127.0.0.1:4175
+npm test                  # 69 tests, no network access required
 ```
 
-Ouvrir ensuite `.env` et remplacer :
+### Configuration
 
-```dotenv
-GEMINI_API_KEY=remplacer_par_votre_cle_google
+| Variable | Purpose |
+|---|---|
+| `GEMINI_API_KEY` | Image and video generation (Developer API) |
+| `GOOGLE_CLOUD_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS` | Vertex AI for the agent. In a container, use `GOOGLE_APPLICATION_CREDENTIALS_JSON` instead of a file path |
+| `GOOGLE_CLOUD_LOCATION` | `global` — named regions return 404 for `gemini-3.5-flash` |
+| `CLICKHOUSE_URL`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`, `CLICKHOUSE_DATABASE` | Telemetry and MCP |
+| `CINEMAI_LLM_MODE` | `mock` for offline work — no provider is ever called |
+
+Without ClickHouse the app runs normally, simply without the analytics tools. Without Vertex it
+falls back to the Developer API. Telemetry failures never interrupt a generation.
+
+### Deploy
+
+```bash
+fly volumes create cinemai_data --region cdg --size 3
+fly secrets import < your-secrets.env
+fly deploy
 ```
 
-Ne placez jamais la clé dans `index.html`, dans une variable préfixée `VITE_`, dans une
-capture ou dans la conversation. Le serveur local est seul autorisé à lire `.env`.
+The volume matters: the manifest and every generated asset live on it. Without it they would be
+destroyed on each deploy.
 
-Pour activer Gemini après avoir renseigné la clé et le modèle :
+## Safety model
 
-```dotenv
-CINEMAI_LLM_MODE=google
-```
+Every provider call that costs money requires an explicit confirmation string (`GENERATE_IMAGE`,
+`GENERATE_VIDEO`) — the agent cannot spend on its own. Estimated costs are shown before each
+generation and recorded afterwards. In `mock` mode nothing reaches a provider, which is how the
+whole test suite runs.
 
-Conserver `mock` pour exécuter les tests ou travailler hors ligne.
+## License
 
-## Générer les premières images
-
-Après validation d'un personnage ou d'un décor, ouvrir sa section et utiliser le bouton de
-génération de planche. Le clic constitue la confirmation explicite de l'appel au fournisseur :
-aucune image payante n'est produite automatiquement par le LLM.
-
-Avant ce clic, la fiche affiche une estimation selon la résolution choisie. Une direction
-supplémentaire peut être saisie pour corriger localement la planche ; chaque régénération crée une
-nouvelle version et conserve l'historique. Par défaut, la dernière référence validée sert d'ancre
-d'identité, sauf si « Repartir de zéro » est coché explicitement.
-
-- en mode `mock`, CinemAI crée une planche SVG déterministe et gratuite ;
-- en mode `google`, le serveur appelle `GEMINI_IMAGE_MODEL`, enregistre le fichier dans
-  `data/media/`, puis attache son URL, son prompt, son modèle et sa version au manifeste ;
-- les médias restent servis par `/api/media/:id` et la clé ne quitte jamais le serveur.
-
-Depuis l’étape Bible, cliquer sur une référence comme Shadow ouvre toutes ses images dérivées.
-Chaque angle, posture, émotion ou variation de décor peut être généré ou régénéré séparément,
-avec son propre prompt et son historique. La planche approuvée reste l’ancre d’identité ; les
-anciennes planches de contact sont conservées et ne sont pas découpées automatiquement.
-
-L’asset s’ouvre dans un atelier synchronisé au-dessus de la conversation : deux tiers pour
-l’image, ses versions et ses contrôles, un tiers pour le LLM. Le séparateur se règle à la souris
-ou au clavier, les préréglages `2/3` et `1/2` sont disponibles, et le plein écran reste réversible.
-Sur desktop, l’historique du dialogue et le composeur restent côte à côte ; sur mobile, ils se
-replient verticalement sans masquer l’envoi.
-
-## Modifier le projet avec le LLM
-
-Gemini peut proposer une modification ciblée d’un asset existant via `update_asset`. La proposition
-affiche le nom et la nouvelle description, puis attend « Utiliser cette proposition » avant toute
-écriture. Les images, références et versions média de l’asset ne sont jamais remplacées par cette
-opération.
-
-Pour vérifier le mode réellement utilisé par le serveur :
-
-```text
-http://127.0.0.1:4175/api/health
-```
-
-La réponse doit contenir `"mode":"google"`. Une variable de lancement comme
-`CINEMAI_LLM_MODE=mock` a priorité sur `.env` et désactive volontairement les propositions Gemini.
-
-## Export
-
-L’étape Export permet de préparer le format, la définition, la cadence, le ratio, l’audio, les
-sous-titres, le filigrane et la qualité de livraison. Dans cette version locale, « Lancer
-l’export » télécharge un manifeste JSON qui décrit ces choix. L’assemblage, l’encodage et le
-multiplexage de la vidéo finale restent à brancher sur ce contrat.
-
-Cette persistance sur disque convient au développement local. Un déploiement serverless comme
-Vercel devra remplacer `data/media/` et `data/workspace.json` par un stockage durable.
-
-### Vérifier hors ligne
-
-```powershell
-node --test tests/server.test.mjs
-```
-
-Ces tests remplacent le transport Google par un faux transport déterministe : ils ne
-consomment aucun quota.
-
-## Maquette P0 historique
-
-La première preuve interactive reste disponible dans `mockups/workspace-v1/`.
-
-```powershell
-python -m http.server 4173 --directory H:\0perso\CinemAI\mockups\workspace-v1
-```
-
-Ouvrir ensuite `http://127.0.0.1:4173`.
-
-Parcours démontré : sélectionner le plan 03, constater la rupture de continuité, préparer
-la correction, puis comparer l'impact. L'export produit un JSON de démonstration local.
-
-## État
-
-- P0 : contrat, première preuve et workspace Odyssey validés techniquement ; validation
-  visuelle humaine en attente.
-- LLM texte : serveur local et Gemini Flash 3.5 intégrés, appel réel minimal validé.
-- P1 à P3 : non commencés.
-- Nano Banana : premier adaptateur et galerie de cohérence branchés ; appel réel à déclencher
-  manuellement depuis la fiche d'un asset.
-- Omni et Veo : étudiés, mais la génération vidéo n'est pas encore branchée.
+MIT — see [LICENSE](LICENSE).
