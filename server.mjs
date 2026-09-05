@@ -2,11 +2,12 @@ import { createServer as createHttpServer } from "node:http";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { createProductionStore, summarizeManifest } from "./production-store.mjs";
+import { reviewStoryboard } from "./storyboard-review.mjs";
 import { clickhouseConfig } from "./clickhouse.mjs";
 import { clickhouseMcpEnv, createMcpClient } from "./mcp-client.mjs";
 import { createVertexAuth, vertexConfig, vertexEndpoint } from "./vertex-auth.mjs";
@@ -117,6 +118,17 @@ const MIME_TYPES = {
   ".webp": "image/webp",
 };
 
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+// Comparaison à durée constante : une comparaison naïve fuit le jeton, un
+// caractère à la fois, par le temps de réponse.
+function timingSafeEqualString(a, b) {
+  const left = Buffer.from(String(a));
+  const right = Buffer.from(String(b));
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
 export function parseEnv(text) {
   const values = {};
   for (const sourceLine of String(text || "").split(/\r?\n/)) {
@@ -176,6 +188,12 @@ export function buildConfig(values = {}) {
   if (!Number.isFinite(videoCostUsdPerSecond) || videoCostUsdPerSecond < 0 || videoCostUsdPerSecond > 100) {
     throw new Error("CINEMAI_VIDEO_COST_USD_PER_SECOND doit être un montant positif raisonnable.");
   }
+  // Sans jeton, l'application publique laisse n'importe qui déclencher des
+  // générations payantes ou réinitialiser le projet : les chaînes de
+  // confirmation sont publiées dans le code, elles protègent de l'accident,
+  // pas d'un tiers. La lecture reste ouverte pour que la démonstration soit
+  // consultable ; seules les écritures exigent le jeton.
+  const accessToken = String(values.CINEMAI_ACCESS_TOKEN || "").trim();
   const chainMaxLinks = Number(values.CINEMAI_CHAIN_MAX_LINKS ?? 3);
   if (!Number.isInteger(chainMaxLinks) || chainMaxLinks < 0 || chainMaxLinks > 20) {
     throw new Error("CINEMAI_CHAIN_MAX_LINKS doit être un entier entre 0 et 20.");
@@ -203,6 +221,7 @@ export function buildConfig(values = {}) {
     videoPollIntervalMs,
     videoMaxWaitMs,
     videoCostUsdPerSecond,
+    accessToken,
     chainMaxLinks,
     imageCostsUsd,
     apiKey,
@@ -775,6 +794,7 @@ function systemInstruction(tab, manifestSummary) {
     `Propose au maximum ${proposalLimit} actions structurées dans cette réponse. Regroupe ton raisonnement : l'utilisateur doit voir des choix, pas une liste de micro-tâches.`,
     "Si aucun projet n'existe, appelle exactement une fois set_project avec titre, prémisse, genre, direction visuelle, squelette narratif, format et durée. Ne propose encore aucun asset, séquence ou plan : l'utilisateur doit d'abord valider cette présentation structurée.",
     "Quand la présentation structurée est validée, poursuis ensuite par petits groupes cohérents d'assets ou de séquences.",
+    "Si le réalisateur demande de rédiger ou découper automatiquement un scénario et qu’aucun découpage n’existe, utilise create_screenplay : une proposition complète de séquences et de plans, avec actions filmables, durées, dialogues et identifiants des références existantes. La somme des durées doit respecter la durée cible. N’invente pas de référence. Si un découpage existe, utilise update_shot pour le développer sans duplication. Distingue vérifications de structure et analyse visuelle : tu n’as pas examiné les images.",
     "Lorsqu'un asset existant doit être corrigé, appelle update_asset avec son identifiant exact. Ne crée jamais un nouvel asset pour remplacer une référence existante.",
     "Tu peux appeler plusieurs outils dans cette limite, mais n'invente jamais un identifiant absent de l'état courant.",
     "Préserve les identifiants, la continuité et le périmètre demandé. Ne lance aucune dépense ni publication.",
@@ -988,6 +1008,16 @@ export function createCinemaiServer({
     const startedAt = Date.now();
     try {
       const url = new URL(request.url, "http://localhost");
+      // Toute requête qui modifie ou dépense doit porter le jeton. La règle
+      // vise la méthode plutôt qu'une liste de routes : une route ajoutée
+      // demain est protégée sans qu'on ait à y penser.
+      if (config.accessToken && !SAFE_METHODS.has(request.method)) {
+        const presented = request.headers["x-cinemai-token"] || url.searchParams.get("token") || "";
+        if (!timingSafeEqualString(String(presented), config.accessToken)) {
+          sendJson(response, 401, { error: "Jeton d'accès requis pour cette action.", requestId });
+          return;
+        }
+      }
       if (url.pathname === "/api/health") {
         if (request.method !== "GET") {
           sendJson(response, 405, { error: "Méthode non autorisée.", requestId });
@@ -1008,6 +1038,19 @@ export function createCinemaiServer({
           return;
         }
         sendJson(response, 200, { manifest: store.snapshot(), requestId });
+        return;
+      }
+      if (url.pathname === "/api/storyboard/review") {
+        if (request.method !== "GET") { sendJson(response, 405, { error: "Méthode non autorisée.", requestId }); return; }
+        sendJson(response, 200, { review: reviewStoryboard(store.snapshot()), requestId });
+        return;
+      }
+      const editShotMatch = url.pathname.match(/^\/api\/shots\/([^/]+)$/);
+      if (editShotMatch) {
+        if (request.method !== "PATCH") { sendJson(response, 405, { error: "Méthode non autorisée.", requestId }); return; }
+        const payload = await readJsonBody(request);
+        if (!payload?.patch || typeof payload.patch !== "object" || Array.isArray(payload.patch)) { sendJson(response, 400, { error: "Les modifications du plan sont requises.", requestId }); return; }
+        sendJson(response, 200, { ...await store.editShot(decodeURIComponent(editShotMatch[1]), payload.patch, payload.baseVersion), requestId });
         return;
       }
       if (url.pathname === "/api/media/config") {
@@ -1289,6 +1332,7 @@ export function createCinemaiServer({
             targetId: shot.id,
             kind: "image",
             purpose: "storyboard",
+            sourceShotVersion: shot.version,
             url: `/api/media/${encodeURIComponent(mediaId)}`,
             fileName,
             mimeType: generated.mimeType,

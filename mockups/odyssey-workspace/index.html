@@ -3119,9 +3119,13 @@
               var timeout = setTimeout(function () { controller.abort(); }, 35000);
               var response;
               try {
+                var chatToken = "";
+                try { chatToken = localStorage.getItem("cinemai.token") || ""; } catch (tokenError) { chatToken = ""; }
                 response = await fetch("/api/chat", {
                   method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: chatToken
+                    ? { "Content-Type": "application/json", "x-cinemai-token": chatToken }
+                    : { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     tab: tab,
                     message: txt,

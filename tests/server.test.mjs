@@ -1303,3 +1303,94 @@ test("a failing analytics call is reported to the model instead of crashing", as
   assert.equal(result.analyticsUsed[0].ok, false);
   assert.match(result.text, /n'existe pas/);
 });
+
+test('storyboard edit and review endpoints preserve media and reject stale writes', async () => {
+  const store = createProductionStore({ persist: false });
+  const project = await store.propose('set_project', { title: 'Storyboard' });
+  await store.decide(project.id, 'approve');
+  const proposal = await store.propose('create_shot', { title: 'Entrée', description: 'Nora entre', durationMs: 8000 });
+  const shotId = (await store.decide(proposal.id, 'approve')).approval.result.entityId;
+  await withServer(mockConfig, async base => {
+    const review = await (await fetch(base + '/api/storyboard/review')).json();
+    assert.equal(review.review.shotCount, 1);
+    assert.equal(review.review.scope, 'structure');
+    const patch = async payload => fetch(base + '/api/shots/' + shotId, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const saved = await patch({ baseVersion: 1, patch: { description: 'Nora ouvre la porte' } });
+    assert.equal(saved.status, 200);
+    const result = await saved.json();
+    assert.equal(result.manifest.shots[0].history[0].description, 'Nora entre');
+    assert.equal((await patch({ baseVersion: 1, patch: { title: 'Écrasement' } })).status, 409);
+    assert.equal((await patch({ baseVersion: 2, patch: { durationMs: -1 } })).status, 400);
+    assert.equal((await patch({ baseVersion: 2 })).status, 400);
+    assert.equal((await fetch(base + '/api/storyboard/review', { method: 'POST' })).status, 405);
+  }, { store });
+});
+
+test('Gemini can propose a whole screenplay without applying or generating it', async () => {
+  const store = createProductionStore({ persist: false });
+  const project = await store.propose('set_project', { title: 'Nora', durationSeconds: 8 });
+  await store.decide(project.id, 'approve');
+  let calls = 0;
+  await withServer({ ...mockConfig, mode: 'google', apiKey: 'test-only' }, async base => {
+    const response = await fetch(base + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tab: 'script', message: 'Propose le scénario complet.' }) });
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.proposals[0].operation.name, 'create_screenplay');
+    assert.equal(store.snapshot().shots.length, 0);
+    await store.decide(payload.proposals[0].id, 'approve');
+    assert.equal(store.snapshot().shots.length, 1);
+    assert.equal(store.snapshot().media.length, 0);
+    assert.equal(calls, 1);
+  }, { store, fetchImpl: async (url, options) => {
+    calls += 1;
+    const body = JSON.parse(options.body);
+    assert.ok(body.tools[0].functionDeclarations.some(tool => tool.name === 'create_screenplay'));
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ functionCall: { name: 'create_screenplay', args: { sequences: [{ title: 'Début', shots: [{ title: 'Entrée', description: 'Nora entre dans le bureau.', durationMs: 8000 }] }] } } }] } }] }), { status: 200 });
+  } });
+});
+
+test("without a token every write is open, with one they require it", async () => {
+  const store = createProductionStore({ persist: false });
+  // Comportement local inchangé : sans jeton configuré, rien n'est exigé.
+  await withServer(mockConfig, async (baseUrl) => {
+    const open = await fetch(`${baseUrl}/api/workspace/reset`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+    });
+    assert.equal(open.status, 400, "seule la confirmation manque, pas le jeton");
+  }, { store });
+
+  const guarded = { ...mockConfig, accessToken: "jeton-secret" };
+  await withServer(guarded, async (baseUrl) => {
+    // La lecture reste publique : la démonstration doit rester consultable.
+    assert.equal((await fetch(`${baseUrl}/api/health`)).status, 200);
+    assert.equal((await fetch(`${baseUrl}/api/workspace`)).status, 200);
+
+    const anonymous = await fetch(`${baseUrl}/api/operations/propose`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "set_project", args: { title: "Intrus" } }),
+    });
+    assert.equal(anonymous.status, 401);
+    assert.match((await anonymous.json()).error, /Jeton d'accès requis/);
+
+    const wrong = await fetch(`${baseUrl}/api/operations/propose`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-cinemai-token": "mauvais" },
+      body: JSON.stringify({ name: "set_project", args: { title: "Intrus" } }),
+    });
+    assert.equal(wrong.status, 401);
+
+    const withHeader = await fetch(`${baseUrl}/api/operations/propose`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-cinemai-token": "jeton-secret" },
+      body: JSON.stringify({ name: "set_project", args: { title: "Film" } }),
+    });
+    assert.equal(withHeader.status, 201);
+
+    // Le paramètre d'URL sert à partager un lien de démonstration fonctionnel.
+    const withQuery = await fetch(`${baseUrl}/api/operations/propose?token=jeton-secret`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "set_project", args: { title: "Film" } }),
+    });
+    assert.equal(withQuery.status, 201);
+  }, { store: createProductionStore({ persist: false }) });
+});

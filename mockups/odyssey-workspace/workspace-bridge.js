@@ -44,9 +44,26 @@
     });
   }
 
+  // Jeton d'accès : l'instance publique exige un jeton pour toute écriture.
+  // On l'accepte dans l'URL une fois, puis on le retient, afin qu'un lien de
+  // démonstration partagé reste fonctionnel sans le laisser traîner dans la
+  // barre d'adresse.
+  var accessToken = "";
+  try {
+    var fromUrl = new URLSearchParams(location.search).get("token");
+    if (fromUrl) {
+      localStorage.setItem("cinemai.token", fromUrl);
+      history.replaceState(null, "", location.pathname);
+    }
+    accessToken = localStorage.getItem("cinemai.token") || "";
+  } catch (error) {
+    accessToken = "";
+  }
+
   async function api(path, options) {
+    var extra = accessToken ? { "x-cinemai-token": accessToken } : {};
     var response = await fetch(path, Object.assign({}, options || {}, {
-      headers: Object.assign({ "Content-Type": "application/json" }, options && options.headers || {})
+      headers: Object.assign({ "Content-Type": "application/json" }, extra, options && options.headers || {})
     }));
     var payload = await response.json().catch(function () { return { error: "Réponse illisible." }; });
     if (!response.ok) throw new Error(payload.error || "La demande a échoué.");
@@ -580,12 +597,91 @@
     paintAnimatic();
   }
 
+  var selectedStoryboardShotId = null;
+  var storyboardReviewRequest = 0;
+
+  function storyboardFrame(shot) {
+    var media = mediaForShot(shot.id);
+    return media.find(isMediaApproved) || media[media.length - 1];
+  }
+
+  function renderStoryboardWorkspace() {
+    if (!state) return;
+    var shots = state.shots || [];
+    var selected = shots.find(function (shot) { return shot.id === selectedStoryboardShotId; });
+    var cards = shots.map(function (shot, index) {
+      var frame = storyboardFrame(shot);
+      return '<button type="button" class="storyboard-tile" data-edit-shot="' + escapeHtml(shot.id) + '">' +
+        '<div class="storyboard-tile-image">' + (frame ? '<img src="' + escapeHtml(frame.url) + '" alt="Image du plan ' + (index + 1) + '">' : '<span>Image à créer</span>') +
+        '<span class="storyboard-number">' + String(index + 1).padStart(2, '0') + '</span></div>' +
+        '<div class="storyboard-tile-copy"><small>' + (shot.durationMs / 1000) + ' s · ' + (shot.continuity === 'continuous' ? 'Raccord continu' : 'Coupe') + '</small><h3>' + escapeHtml(shot.title || 'Sans titre') + '</h3><p>' + escapeHtml(shot.description) + '</p><span class="storyboard-status">' + (frame && isMediaApproved(frame) ? '✓ Image validée' : '○ Image à valider') + '</span><span class="storyboard-edit-label">Modifier le plan ↗</span></div></button>';
+    }).join('');
+    var content = selected ? storyboardEditor(selected) : '<div class="storyboard-grid">' + (cards || '<div class="storyboard-empty"><span>01 — Écriture</span><h3>Une idée devient une histoire.</h3><p>Proposez un scénario découpé en séquences et en plans. Relisez-le avant de créer les images.</p><button type="button" class="choice-action primary" data-draft-screenplay>Proposer le scénario</button></div>') + '</div>';
+    showWorkspacePanel('<section class="storyboard-workspace"><header class="workspace-panel-head"><div><span class="context-kicker">Atelier de réalisation</span><h2>' + (selected ? escapeHtml(selected.title || 'Modifier le plan') : 'Votre histoire, plan par plan.') + '</h2><p>' + shots.length + ' plans · ' + shots.reduce(function (sum, s) { return sum + s.durationMs / 1000; }, 0) + ' s · objectif ' + escapeHtml(state.project.durationSeconds) + ' s</p></div><div class="storyboard-toolbar">' +
+      (selected ? '<button type="button" class="choice-action" data-storyboard-overview>Vue d’ensemble</button>' : '<button type="button" class="choice-action" data-draft-screenplay>' + (shots.length ? 'Développer le scénario' : 'Proposer le scénario') + '</button>') +
+      '<button type="button" class="choice-action" data-open-animatic' + (!shots.length ? ' disabled' : '') + '>▶ Animatique</button><button type="button" class="workspace-close" data-close-workspace aria-label="Fermer">×</button></div></header>' +
+      '<div class="storyboard-body"><div class="storyboard-main">' + content + '</div><aside class="storyboard-review"><span class="context-kicker">Continuité</span><h3>Vérifier avant de générer</h3><p>Contrôles de structure et de références. L’identité visuelle, les costumes et les accessoires restent à examiner sur les images.</p><div data-storyboard-review aria-live="polite">Vérification en cours…</div><button type="button" class="choice-action" data-refresh-storyboard-review>Revérifier</button></aside></div></section>', 'storyboard', 'Storyboard · scénario et cohérence');
+    refreshStoryboardReview();
+  }
+
+  function storyboardEditor(shot) {
+    var dialogue = (shot.dialogue || []).map(function (line) { return line.speaker + ' : ' + line.line; }).join('\n');
+    var frame = storyboardFrame(shot);
+    return '<div class="storyboard-editor">' + (frame ? '<figure class="storyboard-editor-preview"><img src="' + escapeHtml(frame.url) + '" alt="Image de référence du plan"><figcaption>Image v' + frame.version + ' · ' + (isMediaApproved(frame) ? 'validée' : 'à valider') + '</figcaption></figure>' : '') + '<form data-shot-editor="' + escapeHtml(shot.id) + '" data-base-version="' + shot.version + '"><span class="context-kicker">Scénario · version ' + shot.version + '</span>' +
+      '<label>Titre<input name="title" maxlength="120" value="' + escapeHtml(shot.title) + '"></label>' +
+      '<label>Action et cadrage<textarea name="description" rows="4" required maxlength="2000">' + escapeHtml(shot.description) + '</textarea></label>' +
+      '<div class="storyboard-fields"><label>Durée (secondes)<input name="seconds" type="number" min="0.25" max="120" step="0.25" required value="' + shot.durationMs / 1000 + '"></label><label>Raccord<select name="continuity">' + option('cut', 'Coupe franche', shot.continuity) + option('continuous', 'Prolonger le plan précédent', shot.continuity) + '</select></label></div>' +
+      '<label>Dialogues — une ligne « Personnage : réplique »<textarea name="dialogue" rows="3">' + escapeHtml(dialogue) + '</textarea></label>' +
+      '<fieldset><legend>Personnages et décors liés</legend>' + (state.assets || []).map(function (asset) { return '<label class="storyboard-reference"><input type="checkbox" name="assetIds" value="' + escapeHtml(asset.id) + '"' + ((shot.assetIds || []).includes(asset.id) ? ' checked' : '') + '>' + escapeHtml(asset.name) + '</label>'; }).join('') + '</fieldset>' +
+      '<button class="choice-action primary" type="submit">Enregistrer le texte</button><p class="hint">Une nouvelle version du texte est conservée. L’image se régénère séparément.</p><p data-shot-save-status role="status"></p></form>' +
+      '<details class="storyboard-history"><summary>Historique du texte (' + (shot.history || []).length + ')</summary>' + (shot.history || []).slice().reverse().map(function (old) { return '<article><strong>v' + old.version + ' · ' + escapeHtml(old.title) + '</strong><p>' + escapeHtml(old.description) + '</p><small>' + old.durationMs / 1000 + ' s</small></article>'; }).join('') + '</details>' +
+      '<details class="storyboard-media-tools"><summary>Image du plan et génération séparée</summary>' + shotCard(shot) + '</details></div>';
+  }
+
+  function refreshStoryboardReview() {
+    var request = ++storyboardReviewRequest;
+    api('/api/storyboard/review').then(function (payload) {
+      if (request !== storyboardReviewRequest || workspaceMode !== 'storyboard') return;
+      var target = document.querySelector('[data-storyboard-review]');
+      if (!target) return;
+      var report = payload.review;
+      target.innerHTML = '<strong>' + report.issues.length + ' point' + (report.issues.length > 1 ? 's' : '') + ' à examiner</strong><small>' + report.approvedFrames + '/' + report.shotCount + ' images validées</small>' +
+        (report.issues.length ? '<ul>' + report.issues.map(function (issue) {
+          var shot = (state.shots || []).find(function (s) { return s.id === issue.shotId; });
+          return '<li>' + (shot ? '<button type="button" data-edit-shot="' + escapeHtml(shot.id) + '">' + escapeHtml(shot.title || 'Voir le plan') + ' ↗</button>' : '<b>Ensemble du film</b>') + '<p>' + escapeHtml(issue.message) + '</p></li>';
+        }).join('') + '</ul>' : '<p>Les contrôles de structure passent. Revoyez les images dans l’animatique.</p>');
+    }).catch(function (error) {
+      var target = document.querySelector('[data-storyboard-review]');
+      if (target && request === storyboardReviewRequest) target.textContent = error.message;
+    });
+  }
+
+  document.addEventListener('submit', function (event) {
+    var form = event.target.closest('[data-shot-editor]');
+    if (!form) return;
+    event.preventDefault();
+    var values = new FormData(form);
+    var status = form.querySelector('[data-shot-save-status]');
+    var button = form.querySelector('[type="submit"]');
+    var lines = String(values.get('dialogue')).split('\n').filter(function (line) { return line.trim(); });
+    if (lines.length > 12 || lines.some(function (line) { return line.indexOf(':') < 1 || !line.slice(line.indexOf(':') + 1).trim(); })) { status.textContent = 'Utilisez au plus 12 lignes au format « Personnage : réplique ».'; return; }
+    button.disabled = true;
+    api('/api/shots/' + encodeURIComponent(form.getAttribute('data-shot-editor')), { method: 'PATCH', body: JSON.stringify({ baseVersion: Number(form.getAttribute('data-base-version')), patch: {
+      title: values.get('title'), description: values.get('description'), durationMs: Math.round(Number(values.get('seconds')) * 1000), continuity: values.get('continuity'), assetIds: values.getAll('assetIds'), dialogue: lines.map(function (line) { var at = line.indexOf(':'); return { speaker: line.slice(0, at).trim(), line: line.slice(at + 1).trim() }; })
+    } }) }).then(function (payload) {
+      state = payload.manifest;
+      renderPanels();
+      var message = document.querySelector('[data-shot-save-status]');
+      if (message) message.textContent = 'Texte enregistré. Vérifiez l’image si l’action a changé.';
+    }).catch(function (error) { button.disabled = false; status.textContent = error.message; });
+  });
+
   function storyboardContext() {
     var shots = state.shots || [];
     return compactSection("Plans du storyboard", shots.length ? '<div class="context-shot-list">' + shots.map(function (shot, index) {
       var media = mediaForShot(shot.id);
       var image = media.find(function (item) { return item.status === "approved"; }) || media[media.length - 1];
-      return '<button type="button" data-context-tab="script"><span>' + String(index + 1).padStart(2, "0") + '</span>' +
+      return '<button type="button" data-edit-shot="' + escapeHtml(shot.id) + '"><span>' + String(index + 1).padStart(2, "0") + '</span>' +
         (image ? '<img src="' + escapeHtml(image.url) + '" alt="' + escapeHtml(shot.title) + '">' : '') +
         '<strong>' + escapeHtml(shot.title || "Plan sans titre") + '</strong><small>' + Math.round((shot.durationMs || 0) / 100) / 10 + ' s</small></button>';
     }).join("") + '</div>' +
@@ -646,6 +742,7 @@
     if (panes.export) panes.export.innerHTML = contextPane("export", exportContext(), "Options de livraison");
     if (workspaceMode === "asset" && activeAssetId) renderAssetInspector(activeAssetId);
     if (workspaceMode === "export") renderExportWorkspace();
+    if (workspaceMode === "storyboard") renderStoryboardWorkspace();
   }
 
   function conversationPane() {
@@ -870,6 +967,7 @@
       set_project: ["Idée structurée · validation requise", args.title || "Définir le projet", args.premise || args.brief || "Prémisse, genre, direction visuelle et squelette narratif."],
       create_asset: [args.assetType === "location" ? "Créer un décor" : "Créer un asset", args.name || "Nouvelle référence", args.description || "Référence stable pour la continuité."],
       update_asset: ["Modifier une référence", args.name || "Mettre à jour l’asset", args.description || "La description sera modifiée après validation."],
+      create_screenplay: ["Scénario proposé", "Découpage complet à relire", "Valider ce scénario crée ses séquences et ses plans, sans générer d’image ni de vidéo."],
       create_sequence: ["Ajouter une séquence", args.title || "Nouvelle séquence", args.summary || "Bloc narratif proposé."],
       create_shot: ["Ajouter un plan", args.title || "Nouveau plan", args.description || "Plan proposé pour le storyboard."],
       update_shot: ["Corriger un plan", "Modification locale", "Seul le plan ciblé sera modifié."],
@@ -887,6 +985,13 @@
   function editableFields(approval) {
     var operation = approval.operation || {};
     var args = operation.args || {};
+    if (operation.name === "create_screenplay") {
+      return '<div class="screenplay-proposal">' + (args.sequences || []).map(function (sequence) {
+        return '<h3>' + escapeHtml(sequence.title) + '</h3><p>' + escapeHtml(sequence.summary || '') + '</p>' + (sequence.shots || []).map(function (shot) {
+          return '<article><strong>' + escapeHtml(shot.title) + ' · ' + (Number(shot.durationMs) / 1000) + ' s</strong><p>' + escapeHtml(shot.description) + '</p>' + (shot.dialogue || []).map(function (line) { return '<p><em>' + escapeHtml(line.speaker) + ' : ' + escapeHtml(line.line) + '</em></p>'; }).join('') + '</article>';
+        }).join('');
+        }).join('') + '</div>';
+    }
     if (operation.name === "set_project") {
       return '<div class="choice-structure"><div class="choice-field choice-field-wide"><label>Prémisse</label><textarea data-choice-field="premise" rows="3">' + escapeHtml(args.premise || args.brief || "") + '</textarea></div>' +
         '<div class="choice-field"><label>Genre et tonalité</label><textarea data-choice-field="genre" rows="2">' + escapeHtml(args.genre || "") + '</textarea></div>' +
@@ -895,6 +1000,10 @@
         '<div class="choice-fields">' +
         '<div class="choice-field"><label>Format</label><select data-choice-field="aspectRatio">' + option("16:9", "16:9 · paysage", args.aspectRatio || "16:9") + option("9:16", "9:16 · vertical", args.aspectRatio) + option("1:1", "1:1 · carré", args.aspectRatio) + '</select></div>' +
         '<div class="choice-field"><label>Durée cible</label><select data-choice-field="durationSeconds">' + [4, 6, 8, 15, 30].map(function (seconds) { return option(seconds, seconds + " secondes", args.durationSeconds || 8); }).join("") + '</select></div></div>';
+    }
+    if (operation.name === "update_shot") {
+      var currentShot = (state.shots || []).find(function (shot) { return shot.id === args.shotId; });
+      return '<div class="screenplay-proposal"><h3>' + escapeHtml(currentShot && currentShot.title || 'Plan') + '</h3>' + Object.keys(args.patch || {}).map(function (key) { var labels = { title: 'Titre', description: 'Action', durationMs: 'Durée (ms)', continuity: 'Raccord', dialogue: 'Dialogues', assetIds: 'Références' }; return '<p><b>' + escapeHtml(labels[key] || key) + '</b><br>' + escapeHtml(typeof args.patch[key] === 'object' ? JSON.stringify(args.patch[key]) : args.patch[key]) + '</p>'; }).join('') + '</div>';
     }
     if (operation.name === "create_shot") {
       return '<div class="choice-fields"><div class="choice-field"><label>Durée du plan</label><select data-choice-field="durationMs">' + [1000, 2000, 4000, 6000, 8000].map(function (ms) { return option(ms, ms / 1000 + " seconde" + (ms > 1000 ? "s" : ""), args.durationMs || 4000); }).join("") + '</select></div>' +
@@ -1057,6 +1166,20 @@
   }
 
   document.addEventListener("click", function (event) {
+    var editShot = event.target.closest('[data-edit-shot]');
+    if (editShot) { selectedStoryboardShotId = editShot.getAttribute('data-edit-shot'); renderStoryboardWorkspace(); return; }
+    if (event.target.closest('[data-storyboard-overview]')) { selectedStoryboardShotId = null; renderStoryboardWorkspace(); return; }
+    if (event.target.closest('[data-refresh-storyboard-review]')) { refreshStoryboardReview(); return; }
+    var draftScreenplay = event.target.closest('[data-draft-screenplay]');
+    if (draftScreenplay) {
+      if (!state.project.id) { focusComposer('Voici mon idée de film : '); return; }
+      var prompt = (state.shots || []).length || (state.sequences || []).length
+        ? 'Développe le scénario existant en proposant des modifications ciblées des plans. Conserve les personnages, les décors et la durée cible. Ne crée pas de doublon et ne génère aucun média.'
+        : 'Rédige automatiquement le scénario complet à partir de mon idée validée : séquences, plans filmables, actions, cadrages, durées et dialogues utiles. Utilise create_screenplay pour proposer tout le découpage en une validation. Respecte la durée cible, utilise les références existantes et ne génère aucun média.';
+      draftScreenplay.disabled = true;
+      window.CinemAIChat.continueWorkflow(prompt).finally(function () { draftScreenplay.disabled = false; });
+      return;
+    }
     var homePrompt = event.target.closest("[data-home-prompt]");
     if (homePrompt) { focusComposer(homePrompt.getAttribute("data-home-prompt")); return; }
     var contextTab = event.target.closest("[data-context-tab]");
@@ -1064,6 +1187,7 @@
       var tab = contextTab.getAttribute("data-context-tab");
       if (typeof window.odysseyActivate === "function") window.odysseyActivate(tab);
       if (tab === "export") renderExportWorkspace();
+      else if (tab === "script") { selectedStoryboardShotId = null; renderStoryboardWorkspace(); }
       else closeWorkspacePanel();
       setTimeout(function () { unifyConversationSurface(); renderApprovals(activeThread()); }, 0);
       return;
