@@ -234,16 +234,29 @@ test("targeted shot update leaves neighbouring shots byte-identical", async () =
   assert.equal(JSON.stringify(manifest.shots.find((shot) => shot.id === second)), secondBefore);
 });
 
-test("visual and audio clips share one canonical timeline", async () => {
+test("the visual track derives from the shots, audio stays independent", async () => {
   const store = createProductionStore({ persist: false });
   await approve(store, "set_project", { title: "Test" });
-  const shotId = (await approve(store, "create_shot", { description: "Plan", durationMs: 2_000 })).approval.result.entityId;
-  await approve(store, "add_timeline_clip", { shotId, startMs: 500, durationMs: 2_000, strategy: "first_last_video" });
+  const first = (await approve(store, "create_shot", { description: "Plan un", durationMs: 2_000 })).approval.result.entityId;
+  await approve(store, "create_shot", { description: "Plan deux", durationMs: 3_000 });
   await approve(store, "add_audio_clip", { trackKind: "dialogue", title: "Dialogue", startMs: 0, durationMs: 3_000 });
-  const manifest = store.snapshot();
-  assert.equal(manifest.timeline.durationMs, 3_000);
-  assert.equal(manifest.timeline.tracks.find((track) => track.kind === "visual").clips.length, 1);
-  assert.equal(manifest.timeline.tracks.find((track) => track.kind === "dialogue").clips.length, 1);
+
+  const visual = () => store.snapshot().timeline.tracks.find((track) => track.kind === "visual").clips;
+  // Les plans produisent la piste visuelle, bout à bout, sans opération dédiée.
+  assert.deepEqual(visual().map((clip) => [clip.startMs, clip.durationMs]), [[0, 2_000], [2_000, 3_000]]);
+  assert.equal(store.snapshot().timeline.durationMs, 5_000);
+
+  // Modifier la durée d'un plan décale la suite : un seul ordre fait foi.
+  await approve(store, "update_shot", { shotId: first, patch: { durationMs: 4_000 } });
+  assert.deepEqual(visual().map((clip) => [clip.startMs, clip.durationMs]), [[0, 4_000], [4_000, 3_000]]);
+
+  // Un clip visuel manuel créerait un second ordre : il est refusé.
+  await assert.rejects(
+    approve(store, "add_timeline_clip", { shotId: first, startMs: 500, durationMs: 2_000 }),
+    /dérivée des plans/,
+  );
+
+  assert.equal(store.snapshot().timeline.tracks.find((track) => track.kind === "dialogue").clips.length, 1);
 });
 
 test("generation jobs enforce state transitions", async () => {

@@ -25,6 +25,7 @@ export const OPERATION_NAMES = new Set([
   "create_sequence",
   "create_shot",
   "update_shot",
+  "create_screenplay",
   "add_timeline_clip",
   "add_audio_clip",
   "queue_generation",
@@ -116,7 +117,12 @@ function normalizeManifest(value, now) {
     if (typeof asset.updatedAt !== "string") asset.updatedAt = asset.createdAt || now();
   }
   if (!Array.isArray(manifest.shots)) manifest.shots = [];
+  if (manifest.shots.length && manifest.timeline?.tracks) {
+    syncVisualTrack(manifest);
+    recalculateTimeline(manifest);
+  }
   for (const shot of manifest.shots) {
+    if (!Array.isArray(shot.history)) shot.history = [];
     if (!Array.isArray(shot.dialogue)) shot.dialogue = [];
     if (!SHOT_CONTINUITIES.has(shot.continuity)) shot.continuity = "cut";
   }
@@ -167,6 +173,30 @@ function stableArgsKey(name, args, knownIds) {
     return value;
   };
   return `${name}::${JSON.stringify(normalize(args || {}, null))}`;
+}
+
+// La piste visuelle est DÉRIVÉE des plans, elle n'est pas une seconde source de
+// vérité. Sans cela deux ordres coexistent : un scénario produit six plans mais
+// une timeline vide, et l'étape Production croit le film inexistant. En cas de
+// divergence, ce sont les plans qui font foi.
+function syncVisualTrack(manifest) {
+  const track = manifest.timeline?.tracks?.find((item) => item.kind === "visual");
+  if (!track) return;
+  let cursor = 0;
+  track.clips = (manifest.shots || []).map((shot) => {
+    const durationMs = shot.durationMs || 0;
+    const clip = {
+      id: `clip_${shot.id}`,
+      shotId: shot.id,
+      title: shot.title || "Plan",
+      strategy: shot.strategy || "image",
+      startMs: cursor,
+      durationMs,
+      status: "planned",
+    };
+    cursor += durationMs;
+    return clip;
+  });
 }
 
 function recalculateTimeline(manifest) {
@@ -261,6 +291,20 @@ function applyOperation(manifest, operation, now) {
     return { entityType: "asset", entityId: asset.id, tab: asset.type === "location" ? "decors" : "personnages" };
   }
 
+  if (name === "create_screenplay") {
+    if (manifest.shots.length || manifest.sequences.length) fail("Un découpage existe déjà. Modifiez les plans existants séparément.", 409);
+    if (!Array.isArray(args.sequences) || !args.sequences.length || args.sequences.length > 12) fail("Le scénario doit contenir de 1 à 12 séquences.");
+    let count = 0;
+    for (const sequence of args.sequences) {
+      if (!Array.isArray(sequence?.shots) || !sequence.shots.length) fail("Chaque séquence doit contenir des plans.");
+      count += sequence.shots.length;
+      if (count > 24) fail("Le scénario est limité à 24 plans par proposition.");
+      const created = applyOperation(manifest, { name: "create_sequence", args: sequence }, now);
+      for (const shot of sequence.shots) applyOperation(manifest, { name: "create_shot", args: { ...shot, sequenceId: created.entityId } }, now);
+    }
+    return { entityType: "screenplay", entityId: manifest.project.id, tab: "script" };
+  }
+
   if (name === "create_sequence") {
     const title = cleanText(args.title, 120);
     if (!title) fail("Le titre de la séquence est requis.");
@@ -297,6 +341,7 @@ function applyOperation(manifest, operation, now) {
       continuity: SHOT_CONTINUITIES.has(args.continuity) ? args.continuity : "cut",
       version: 1,
       status: "draft",
+      history: [],
       createdAt: now(),
       updatedAt: now(),
     };
@@ -306,7 +351,10 @@ function applyOperation(manifest, operation, now) {
 
   if (name === "update_shot") {
     const shot = requireShot(manifest, cleanText(args.shotId, 128));
+    if (args.baseVersion !== undefined && args.baseVersion !== shot.version) fail("Ce plan a été modifié ailleurs. Rechargez-le avant d’enregistrer.", 409);
     const patch = args.patch && typeof args.patch === "object" && !Array.isArray(args.patch) ? args.patch : {};
+    const { history, ...previous } = shot;
+    shot.history = [...(history || []), clone(previous)].slice(-50);
     if (patch.title !== undefined) shot.title = cleanText(patch.title, 120);
     if (patch.description !== undefined) {
       const description = cleanText(patch.description, 2_000);
@@ -319,6 +367,10 @@ function applyOperation(manifest, operation, now) {
       shot.strategy = patch.strategy;
     }
     if (patch.dialogue !== undefined) shot.dialogue = cleanDialogue(patch.dialogue);
+    if (patch.assetIds !== undefined) {
+      if (!Array.isArray(patch.assetIds) || patch.assetIds.some(id => !manifest.assets.some(asset => asset.id === id))) fail("Une référence sélectionnée est introuvable.");
+      shot.assetIds = [...new Set(patch.assetIds)].slice(0, 20);
+    }
     if (patch.continuity !== undefined) {
       if (!SHOT_CONTINUITIES.has(patch.continuity)) fail("La continuité doit valoir cut ou continuous.");
       shot.continuity = patch.continuity;
@@ -329,6 +381,11 @@ function applyOperation(manifest, operation, now) {
   }
 
   if (name === "add_timeline_clip") {
+    // La piste visuelle dérive des plans : accepter un clip manuel créerait un
+    // second ordre, aussitôt écrasé. Mieux vaut refuser clairement.
+    fail("La piste visuelle est dérivée des plans. Modifiez la durée ou l'ordre du plan concerné.", 409);
+  }
+  if (name === "__add_timeline_clip_desactive__") {
     const shot = requireShot(manifest, cleanText(args.shotId, 128));
     const strategy = VISUAL_STRATEGIES.has(args.strategy) ? args.strategy : shot.strategy;
     const clip = {
@@ -430,6 +487,21 @@ export function createProductionStore({
       return clone(manifest);
     },
 
+    async editShot(shotId, patch, baseVersion) {
+      if (!Number.isInteger(baseVersion)) fail("La version du plan est requise.");
+      if (patch.durationMs !== undefined && (!Number.isInteger(patch.durationMs) || patch.durationMs < 250 || patch.durationMs > 120000)) fail("La durée doit être comprise entre 0,25 et 120 secondes.");
+      const next = clone(manifest);
+      applyOperation(next, { name: "update_shot", args: { shotId, patch, baseVersion } }, now);
+      syncVisualTrack(next);
+      recalculateTimeline(next);
+      next.revision += 1;
+      next.updatedAt = now();
+      next.activity.push({ id: `event_${randomUUID()}`, type: "shot_edited", shotId, revision: next.revision, at: now() });
+      manifest = next;
+      await save();
+      return { manifest: clone(manifest) };
+    },
+
     async attachMedia({
       id,
       targetType,
@@ -447,6 +519,7 @@ export function createProductionStore({
       width = null,
       height = null,
       estimatedCostUsd = 0,
+      sourceShotVersion = null,
     } = {}) {
       if (targetType !== "asset" && targetType !== "shot") {
         fail("Les médias acceptent uniquement les assets et les plans.");
@@ -493,6 +566,7 @@ export function createProductionStore({
         variantKey: cleanVariantKey,
         variantVersion,
         parentMediaId: cleanParentMediaId,
+        sourceShotVersion: targetType === "shot" && Number.isInteger(sourceShotVersion) ? sourceShotVersion : null,
         version: (Array.isArray(target.references) ? target.references.length : 0) + 1,
         status: "ready",
         createdAt: now(),
@@ -540,6 +614,7 @@ export function createProductionStore({
       }
       media.status = approved ? "approved" : "ready";
       media.approvedAt = approved ? now() : null;
+      if (media.targetType === "shot" && media.kind === "image") media.reviewedShotVersion = approved ? target.version : null;
       target.approvedMediaId = approved ? media.id : null;
       manifest.revision += 1;
       manifest.updatedAt = now();
@@ -608,6 +683,10 @@ export function createProductionStore({
         nextApproval.operation.args = { ...nextApproval.operation.args, ...clone(argsOverride) };
       }
       const result = applyOperation(next, nextApproval.operation, now);
+      // Une seule reconstruction après l'opération complète : create_screenplay
+      // en applique plusieurs en cascade.
+      syncVisualTrack(next);
+      recalculateTimeline(next);
       next.revision += 1;
       next.updatedAt = now();
       nextApproval.status = "approved";

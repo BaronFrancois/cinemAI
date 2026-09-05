@@ -436,7 +436,10 @@
       '<h1>' + escapeHtml(project.title || "Nouveau projet") + '</h1><p>' + escapeHtml(projectSummary()) + '</p>' +
       '<span class="context-section-label">Étape actuelle</span>' + workflowNav(activeTab) + '</div>' +
       '<div class="pane-scroll project-context-scroll">' + body + '</div>' +
-      '<div class="pane-foot project-context-foot"><span>' + escapeHtml(footer) + '</span><button type="button" data-context-tab="projet">Vue d’ensemble</button></div>';
+      // Le bouton ouvrait toujours l'étape Projet, quelle que soit l'étape
+      // affichée : depuis le Storyboard il renvoyait à l'Idée. Il ouvre
+      // désormais la vue d'ensemble de l'étape courante.
+      '<div class="pane-foot project-context-foot"><span>' + escapeHtml(footer) + '</span><button type="button" data-context-tab="' + escapeHtml(activeTab) + '">Vue d’ensemble</button></div>';
   }
 
   function primaryAssetMedia(asset) {

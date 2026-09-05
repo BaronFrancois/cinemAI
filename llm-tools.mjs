@@ -1,5 +1,33 @@
 export const GEMINI_FUNCTION_DECLARATIONS = [
   {
+    name: "create_screenplay",
+    description: "Proposer un scénario complet, découpé en séquences et plans, pour un projet validé sans découpage existant. Une seule validation humaine applique le scénario entier. Aucune génération de média. Maximum 12 séquences et 24 plans, durée totale conforme à la cible.",
+    parameters: {
+      type: "object",
+      properties: {
+        sequences: { type: "array", items: {
+          type: "object",
+          properties: {
+            title: { type: "string" }, summary: { type: "string" },
+            shots: { type: "array", items: {
+              type: "object",
+              properties: {
+                title: { type: "string" }, description: { type: "string" },
+                durationMs: { type: "integer" },
+                assetIds: { type: "array", items: { type: "string" }, description: "Identifiants exacts des références existantes." },
+                continuity: { type: "string", enum: ["cut", "continuous"] },
+                dialogue: { type: "array", items: { type: "object", properties: { speaker: { type: "string" }, line: { type: "string" } }, required: ["speaker", "line"] } },
+              },
+              required: ["title", "description", "durationMs"],
+            } },
+          },
+          required: ["title", "shots"],
+        } },
+      },
+      required: ["sequences"],
+    },
+  },
+  {
     name: "set_project",
     description: "Présenter l'idée sous une forme structurée complète avant tout asset ou plan. Cette proposition constitue la porte de validation éditoriale et ne s'applique jamais sans validation humaine.",
     parameters: {
@@ -117,21 +145,7 @@ export const GEMINI_FUNCTION_DECLARATIONS = [
       required: ["shotId", "patch"],
     },
   },
-  {
-    name: "add_timeline_clip",
-    description: "Proposer le placement d'un plan sur la piste visuelle canonique.",
-    parameters: {
-      type: "object",
-      properties: {
-        shotId: { type: "string" },
-        title: { type: "string" },
-        strategy: { type: "string", enum: ["image", "first_last_video", "micro_video", "image_sequence", "interpolation"] },
-        startMs: { type: "integer" },
-        durationMs: { type: "integer" },
-      },
-      required: ["shotId", "startMs"],
-    },
-  },
+  
   {
     name: "add_audio_clip",
     description: "Proposer un clip sur une piste audio séparée de la vidéo.",
