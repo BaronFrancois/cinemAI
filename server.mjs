@@ -2,7 +2,7 @@ import { createServer as createHttpServer } from "node:http";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
@@ -119,6 +119,22 @@ const MIME_TYPES = {
 };
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const CLIENT_ASSETS = ["index.html", "workspace-bridge.js", "workspace-bridge.css"];
+
+// Empreinte des fichiers servis au navigateur. Une page ouverte garde son
+// ancien code : cette empreinte permet de lui dire qu'une version plus récente
+// existe, au lieu de la laisser croire qu'un correctif est déjà actif.
+export async function clientVersion(staticDir) {
+  const hash = createHash("sha1");
+  for (const name of CLIENT_ASSETS) {
+    try {
+      hash.update(await readFile(resolve(staticDir, name)));
+    } catch {
+      hash.update(name);
+    }
+  }
+  return hash.digest("hex").slice(0, 12);
+}
 
 // Comparaison à durée constante : une comparaison naïve fuit le jeton, un
 // caractère à la fois, par le temps de réponse.
@@ -1040,6 +1056,7 @@ export function createCinemaiServer({
           mode: config.mode,
           model: config.model,
           keyConfigured: Boolean(config.apiKey),
+          clientVersion: await clientVersion(staticDir),
           requestId,
         });
         return;

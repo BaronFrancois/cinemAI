@@ -1966,6 +1966,87 @@
     }
   };
 
+  // Rafraîchissement en place : l'état du manifeste est reconstruit sans
+  // recharger la page, donc sans perdre la conversation. Seules les cartes de
+  // proposition et les panneaux sont réaffichés ; les messages restent.
+  var knownClientVersion = null;
+  var refreshing = false;
+
+  function busyEditing() {
+    var active = document.activeElement;
+    if (active && active.closest && active.closest('[data-shot-editor], .composer')) return true;
+    // Ne pas réécrire l'écran pendant qu'une décision ou une génération part.
+    return Boolean(document.querySelector('[data-run-job][disabled], [data-choice][disabled]'));
+  }
+
+  async function refreshState(force) {
+    if (refreshing || (!force && busyEditing())) return;
+    refreshing = true;
+    try {
+      var payload = await api('/api/workspace');
+      var next = payload.manifest || payload;
+      if (!state || next.revision !== state.revision || force) {
+        state = next;
+        renderPanels();
+        renderApprovals(activeThread());
+        if (workspaceMode === 'storyboard') renderStoryboardWorkspace();
+        else if (workspaceMode === 'video') renderVideoWorkspace();
+      }
+    } catch (error) {
+      // Une panne réseau est sans conséquence, on réessaiera. Mais une erreur
+      // de rendu doit se voir : l'avaler masquerait un écran figé.
+      if (console && console.warn) console.warn("Rafraîchissement interrompu :", error && error.message, error);
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  function showReloadNotice() {
+    if (document.querySelector('[data-reload-notice]')) return;
+    var notice = document.createElement('div');
+    notice.className = 'reload-notice';
+    notice.setAttribute('data-reload-notice', '');
+    notice.innerHTML = '<span>Une version plus récente de l’interface est disponible.</span>' +
+      '<button type="button" data-reload-now>Recharger</button>';
+    document.body.appendChild(notice);
+  }
+
+  async function watchVersion() {
+    try {
+      var health = await api('/api/health');
+      if (!health.clientVersion) return;
+      if (knownClientVersion === null) knownClientVersion = health.clientVersion;
+      else if (health.clientVersion !== knownClientVersion) showReloadNotice();
+      // Observable depuis la console : sans cela, un écart de version se
+      // diagnostique à l'aveugle.
+      document.body.dataset.clientVersion = knownClientVersion;
+      document.body.dataset.serverVersion = health.clientVersion;
+    } catch (error) {
+      // Serveur momentanément absent : rien à signaler.
+    }
+  }
+
+  document.addEventListener('click', function (event) {
+    if (event.target.closest('[data-reload-now]')) location.reload();
+  });
+
+  function startAutoRefresh() {
+    var ticks = 0;
+    watchVersion();
+    refreshState(false);
+    setInterval(function () {
+      ticks += 1;
+      // Un onglet masqué ralentit au lieu de s'arrêter : il rattrape son retard
+      // sans interroger le serveur inutilement.
+      if (document.hidden && ticks % 5 !== 0) return;
+      refreshState(false);
+      watchVersion();
+    }, 6000);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) refreshState(false);
+    });
+  }
+
   function hookTabActivation() {
     if (typeof window.odysseyActivate !== "function" || window.odysseyActivate.cinemaiWrapped) return;
     var original = window.odysseyActivate;
@@ -1989,6 +2070,7 @@
   }
 
   function start() {
+    startAutoRefresh();
     var app = document.querySelector(".app");
     if (app) {
       app.classList.add("project-context-layout");
