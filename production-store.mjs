@@ -307,7 +307,21 @@ function applyOperation(manifest, operation, now) {
   }
 
   if (name === "create_screenplay") {
-    if (manifest.shots.length || manifest.sequences.length) fail("Un découpage existe déjà. Modifiez les plans existants séparément.", 409);
+    // Remplacer un découpage existant efface le travail en cours : le modèle ne
+    // peut pas le décider seul, c'est au réalisateur de l'autoriser à la
+    // validation. Les plans remplacés partent en corbeille, pas au néant.
+    if (manifest.shots.length || manifest.sequences.length) {
+      if (args.replace !== true) {
+        fail("Un découpage existe déjà. Validez en autorisant le remplacement, ou modifiez les plans existants.", 409);
+      }
+      if (!Array.isArray(manifest.trash)) manifest.trash = [];
+      manifest.shots.forEach((shot, index) => {
+        manifest.trash.push({ shot: clone(shot), index, deletedAt: now() });
+      });
+      manifest.trash = manifest.trash.slice(-TRASH_LIMIT);
+      manifest.shots = [];
+      manifest.sequences = [];
+    }
     if (!Array.isArray(args.sequences) || !args.sequences.length || args.sequences.length > 12) fail("Le scénario doit contenir de 1 à 12 séquences.");
     let count = 0;
     for (const sequence of args.sequences) {

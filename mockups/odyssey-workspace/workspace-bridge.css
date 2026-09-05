@@ -2648,3 +2648,18 @@ html:not(.bridge-ready) [data-thread] {
 .storyboard-tile-actions { flex-wrap: wrap; }
 .storyboard-tile-actions select { min-height: 32px; background: #172231; color: #fff; }
 .llm-connection-status { font-size: 11px; padding: 5px 10px; color: #b5c9e8; }
+
+.choice-replace {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0 2px;
+  padding: 8px 11px;
+  border: 1px solid rgba(224, 168, 108, 0.45);
+  border-radius: 10px;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.choice-replace input { margin-top: 2px; flex: none; }

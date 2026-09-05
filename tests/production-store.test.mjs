@@ -385,3 +385,23 @@ test('selecting an older image preserves the clip and all image versions', async
   assert.equal(m.media.find(x => x.id === 'clip').status, 'approved');
   assert.equal(m.shots[0].approvedMediaId, 'old');
 });
+
+test("a screenplay only replaces an existing breakdown when explicitly allowed", async () => {
+  const store = createProductionStore({ persist: false });
+  await approve(store, "set_project", { title: "Remplacement" });
+  await approve(store, "create_shot", { title: "Ancien", description: "Plan d'origine.", durationMs: 4_000 });
+
+  const screenplay = { sequences: [{ title: "Nouvelle séquence", shots: [{ title: "Neuf", description: "Nouveau plan.", durationMs: 2_000 }] }] };
+  // Sans autorisation, le découpage existant est protégé.
+  await assert.rejects(approve(store, "create_screenplay", screenplay), /autorisant le remplacement/);
+  assert.deepEqual(store.snapshot().shots.map((shot) => shot.title), ["Ancien"]);
+
+  // Le réalisateur autorise le remplacement au moment de valider.
+  const proposal = await store.propose("create_screenplay", screenplay, "test");
+  await store.decide(proposal.id, "approve", { ...screenplay, replace: true });
+  const manifest = store.snapshot();
+  assert.deepEqual(manifest.shots.map((shot) => shot.title), ["Neuf"]);
+  assert.equal(manifest.timeline.durationMs, 2_000, "la timeline suit le nouveau découpage");
+  // Le travail remplacé reste récupérable.
+  assert.ok(manifest.trash.some((entry) => entry.shot.title === "Ancien"));
+});

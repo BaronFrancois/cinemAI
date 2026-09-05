@@ -959,6 +959,11 @@
             color: var(--ink);
             padding: 4px 2px 2px;
             min-height: 20px;
+            /* Sans plafond ni défilement, un message long étirait le champ sans
+               fin et poussait le composeur hors de l'écran. */
+            max-height: 30vh;
+            overflow-y: auto;
+            overflow-wrap: anywhere;
           }
           .composer-input.empty { color: var(--ink-3); }
           .composer-actions {

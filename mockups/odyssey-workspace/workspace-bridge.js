@@ -1215,6 +1215,13 @@
     return '<article class="proposal bridge-choice" data-approval-card="' + escapeHtml(approval.id) + '">' +
       '<div><div class="choice-kicker">Proposition ' + (index + 1) + '</div><div class="choice-title">' + escapeHtml(presentation[1]) + '</div></div>' +
       '<p class="choice-summary">' + escapeHtml(presentation[2]) + '</p>' + editableFields(approval) +
+      // Sans cette case, valider un nouveau découpage sur un film déjà écrit
+      // échouait en boucle : le seul autre choix était de tout perdre.
+      (approval.operation.name === "create_screenplay" && (state.shots || []).length
+        ? '<label class="choice-replace"><input type="checkbox" data-allow-replace>' +
+          'Remplacer le découpage actuel (' + (state.shots || []).length + ' plans). Les plans remplacés partent à la corbeille et restent récupérables.' +
+          '</label>'
+        : '') +
       '<div class="choice-actions"><button class="choice-action primary" data-choice="approve">Utiliser cette proposition</button><button class="choice-action" data-choice="reject">Écarter</button></div>' +
       '<details class="choice-technical"><summary>Détails techniques</summary><pre>' + escapeHtml(JSON.stringify(approval.operation.args || {}, null, 2)) + '</pre></details>' +
       '</article>';
@@ -1266,6 +1273,10 @@
       var value = field.value;
       adjusted[field.getAttribute("data-choice-field")] = /^\d+$/.test(value) ? Number(value) : value;
     });
+    // Remplacer un découpage existant est une décision du réalisateur, prise
+    // explicitement à la validation : le modèle ne peut pas l'imposer.
+    var replaceBox = card.querySelector("[data-allow-replace]");
+    if (replaceBox && replaceBox.checked) adjusted.replace = true;
     card.style.opacity = "0.55";
     card.style.pointerEvents = "none";
     try {
