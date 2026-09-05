@@ -603,6 +603,7 @@ export function createProductionStore({
       height = null,
       estimatedCostUsd = 0,
       sourceShotVersion = null,
+      sourceRefs = [],
     } = {}) {
       if (targetType !== "asset" && targetType !== "shot") {
         fail("Les médias acceptent uniquement les assets et les plans.");
@@ -650,6 +651,18 @@ export function createProductionStore({
         variantVersion,
         parentMediaId: cleanParentMediaId,
         sourceShotVersion: targetType === "shot" && Number.isInteger(sourceShotVersion) ? sourceShotVersion : null,
+        // Références réellement transmises au générateur, pas celles qu'on
+        // suppose : c'est ce qui rend une alerte de changement vérifiable.
+        sourceRefs: Array.isArray(sourceRefs)
+          ? sourceRefs
+              .filter((ref) => ref && ref.assetId && ref.mediaId)
+              .map((ref) => ({
+                assetId: cleanText(ref.assetId, 128),
+                mediaId: cleanText(ref.mediaId, 160),
+                mediaVersion: Number.isInteger(ref.mediaVersion) ? ref.mediaVersion : null,
+              }))
+              .slice(0, 20)
+          : [],
         version: (Array.isArray(target.references) ? target.references.length : 0) + 1,
         status: "ready",
         createdAt: now(),

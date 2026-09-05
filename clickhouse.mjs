@@ -42,6 +42,11 @@ const DDL = [
   ) ENGINE = MergeTree
   ORDER BY (project_id, created_at, media_id)`,
 
+  // Les tables existantes ne sont pas recréées : les colonnes de provenance
+  // doivent être ajoutées explicitement.
+  `ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS source_shot_version UInt16 DEFAULT 0`,
+  `ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS source_refs String DEFAULT ''`,
+
   // Les décisions humaines : ce qui a été proposé, accepté, refusé, et en
   // combien de temps. C'est la mesure de la friction que l'agent doit réduire.
   `CREATE TABLE IF NOT EXISTS approvals (
@@ -81,7 +86,7 @@ export function createClickhouseClient({ config, fetchImpl = fetch, timeoutMs = 
     "Content-Type": "text/plain; charset=utf-8",
   };
 
-  async function send(sql, { database = config.database, body } = {}) {
+  async function send(sql, { database = config.database, body, timeout = timeoutMs } = {}) {
     const target = new URL(config.url);
     target.searchParams.set("query", sql);
     if (database) target.searchParams.set("database", database);
@@ -91,7 +96,7 @@ export function createClickhouseClient({ config, fetchImpl = fetch, timeoutMs = 
         method: "POST",
         headers,
         body: body ?? "",
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(timeout),
       });
     } catch (error) {
       if (error?.name === "TimeoutError" || error?.name === "AbortError") {
@@ -108,9 +113,11 @@ export function createClickhouseClient({ config, fetchImpl = fetch, timeoutMs = 
 
   return {
     async ensureSchema() {
-      // La base doit exister avant qu'on puisse la sélectionner.
-      await send(`CREATE DATABASE IF NOT EXISTS ${config.database}`, { database: null });
-      for (const statement of DDL) await send(statement);
+      // Un ALTER sur un cluster qui sort de veille dépasse largement le délai
+      // d'une requête ordinaire.
+      const ddlTimeout = Math.max(timeoutMs, 90_000);
+      await send(`CREATE DATABASE IF NOT EXISTS ${config.database}`, { database: null, timeout: ddlTimeout });
+      for (const statement of DDL) await send(statement, { timeout: ddlTimeout });
     },
 
     async insert(table, rows) {
@@ -170,6 +177,10 @@ export function mediaRows(projectId, media = [], extras = {}) {
       start_from: String(extra.startFrom || ""),
       chain_depth: Number(extra.chainDepth || 0),
       reanchored: extra.reanchored ? 1 : 0,
+      // Provenance sérialisée : de quelle version de scénario et de quelles
+      // planches exactes cette image descend.
+      source_shot_version: Number(item.sourceShotVersion || 0),
+      source_refs: JSON.stringify(item.sourceRefs || []),
       created_at: asDateTime(item.createdAt),
     };
   });

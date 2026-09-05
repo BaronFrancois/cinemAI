@@ -270,7 +270,14 @@ async function loadLayoutImages(snapshot, assets, mediaDir) {
     if (!media) continue;
     try {
       const bytes = await readFile(resolve(mediaDir, media.fileName));
-      layouts.push({ name: asset.name, mimeType: media.mimeType, data: bytes.toString("base64") });
+      layouts.push({
+        assetId: asset.id,
+        name: asset.name,
+        mediaId: media.id,
+        mediaVersion: media.version,
+        mimeType: media.mimeType,
+        data: bytes.toString("base64"),
+      });
     } catch {
       // Un plan de masse illisible ne doit pas bloquer la génération.
     }
@@ -289,6 +296,10 @@ async function loadReferenceImages(snapshot, assets, mediaDir) {
         assetId: asset.id,
         name: asset.name,
         approved: isApprovedReference(media),
+        // Provenance : de quelle planche exacte cette image descend. Sans cela
+        // on ne peut pas dire quels plans revoir quand une référence change.
+        mediaId: media.id,
+        mediaVersion: media.version,
         mimeType: media.mimeType,
         data: bytes.toString("base64"),
       });
@@ -1343,6 +1354,11 @@ export function createCinemaiServer({
             kind: "image",
             purpose: "storyboard",
             sourceShotVersion: shot.version,
+            sourceRefs: referenceImages.map((reference) => ({
+              assetId: reference.assetId,
+              mediaId: reference.mediaId,
+              mediaVersion: reference.mediaVersion,
+            })),
             url: `/api/media/${encodeURIComponent(mediaId)}`,
             fileName,
             mimeType: generated.mimeType,
