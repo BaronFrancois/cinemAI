@@ -66,7 +66,11 @@
       headers: Object.assign({ "Content-Type": "application/json" }, extra, options && options.headers || {})
     }));
     var payload = await response.json().catch(function () { return { error: "Réponse illisible." }; });
-    if (!response.ok) throw new Error(payload.error || "La demande a échoué.");
+    if (!response.ok) {
+      var failure = new Error(payload.error || "La demande a échoué.");
+      failure.status = response.status;
+      throw failure;
+    }
     return payload;
   }
 
@@ -601,6 +605,9 @@
   }
 
   var selectedStoryboardShotId = null;
+  // Un texte saisi et non enregistré doit survivre à la navigation : sans cela
+  // ouvrir un autre plan efface silencieusement le travail en cours.
+  var shotDrafts = {};
   var storyboardReviewRequest = 0;
 
   function storyboardFrame(shot) {
@@ -640,14 +647,29 @@
   }
 
   function storyboardEditor(shot) {
-    var dialogue = (shot.dialogue || []).map(function (line) { return line.speaker + ' : ' + line.line; }).join('\n');
+    var draft = shotDrafts[shot.id] || null;
+    var current = draft ? draft.values : {
+      title: shot.title || '',
+      description: shot.description || '',
+      seconds: String(shot.durationMs / 1000),
+      continuity: shot.continuity || 'cut',
+      dialogue: (shot.dialogue || []).map(function (line) { return line.speaker + ' : ' + line.line; }).join('\n'),
+      assetIds: shot.assetIds || [],
+    };
+    // Un brouillon né d'une version dépassée signale un conflit d'édition.
+    var conflicted = Boolean(draft && draft.baseVersion !== shot.version);
+    var dialogue = current.dialogue;
     var frame = storyboardFrame(shot);
     return '<div class="storyboard-editor">' + (frame ? '<figure class="storyboard-editor-preview"><img src="' + escapeHtml(frame.url) + '" alt="Image de référence du plan"><figcaption>Image v' + frame.version + ' · ' + (isMediaApproved(frame) ? 'validée' : 'à valider') + '</figcaption></figure>' : '') + '<form data-shot-editor="' + escapeHtml(shot.id) + '" data-base-version="' + shot.version + '"><span class="context-kicker">Scénario · version ' + shot.version + '</span>' +
-      '<label>Titre<input name="title" maxlength="120" value="' + escapeHtml(shot.title) + '"></label>' +
-      '<label>Action et cadrage<textarea name="description" rows="4" required maxlength="2000">' + escapeHtml(shot.description) + '</textarea></label>' +
-      '<div class="storyboard-fields"><label>Durée (secondes)<input name="seconds" type="number" min="0.25" max="120" step="0.25" required value="' + shot.durationMs / 1000 + '"></label><label>Raccord<select name="continuity">' + option('cut', 'Coupe franche', shot.continuity) + option('continuous', 'Prolonger le plan précédent', shot.continuity) + '</select></label></div>' +
+      (draft ? '<p class="storyboard-draft' + (conflicted ? ' conflict' : '') + '">' + (conflicted
+        ? 'Ce plan a changé ailleurs pendant votre saisie. Votre brouillon est conservé ; enregistrez pour écraser, ou abandonnez-le.'
+        : 'Brouillon non enregistré, conservé depuis votre dernière saisie.') +
+        ' <button type="button" data-discard-draft="' + escapeHtml(shot.id) + '">Abandonner le brouillon</button></p>' : '') +
+      '<label>Titre<input name="title" maxlength="120" value="' + escapeHtml(current.title) + '"></label>' +
+      '<label>Action et cadrage<textarea name="description" rows="4" required maxlength="2000">' + escapeHtml(current.description) + '</textarea></label>' +
+      '<div class="storyboard-fields"><label>Durée (secondes)<input name="seconds" type="number" min="0.25" max="120" step="0.25" required value="' + escapeHtml(current.seconds) + '"></label><label>Raccord<select name="continuity">' + option('cut', 'Coupe franche', current.continuity) + option('continuous', 'Prolonger le plan précédent', current.continuity) + '</select></label></div>' +
       '<label>Dialogues — une ligne « Personnage : réplique »<textarea name="dialogue" rows="3">' + escapeHtml(dialogue) + '</textarea></label>' +
-      '<fieldset><legend>Personnages et décors liés</legend>' + (state.assets || []).map(function (asset) { return '<label class="storyboard-reference"><input type="checkbox" name="assetIds" value="' + escapeHtml(asset.id) + '"' + ((shot.assetIds || []).includes(asset.id) ? ' checked' : '') + '>' + escapeHtml(asset.name) + '</label>'; }).join('') + '</fieldset>' +
+      '<fieldset><legend>Personnages et décors liés</legend>' + (state.assets || []).map(function (asset) { return '<label class="storyboard-reference"><input type="checkbox" name="assetIds" value="' + escapeHtml(asset.id) + '"' + ((current.assetIds || []).includes(asset.id) ? ' checked' : '') + '>' + escapeHtml(asset.name) + '</label>'; }).join('') + '</fieldset>' +
       '<button class="choice-action primary" type="submit">Enregistrer le texte</button><p class="hint">Une nouvelle version du texte est conservée. L’image se régénère séparément.</p><p data-shot-save-status role="status"></p></form>' +
       '<details class="storyboard-history"><summary>Historique du texte (' + (shot.history || []).length + ')</summary>' + (shot.history || []).slice().reverse().map(function (old) { return '<article><strong>v' + old.version + ' · ' + escapeHtml(old.title) + '</strong><p>' + escapeHtml(old.description) + '</p><small>' + old.durationMs / 1000 + ' s</small></article>'; }).join('') + '</details>' +
       '<details class="storyboard-media-tools"><summary>Image du plan et génération séparée</summary>' + shotCard(shot) + '</details></div>';
@@ -671,6 +693,31 @@
     });
   }
 
+  function captureShotDraft(form) {
+    var values = new FormData(form);
+    shotDrafts[form.getAttribute('data-shot-editor')] = {
+      baseVersion: Number(form.getAttribute('data-base-version')),
+      values: {
+        title: String(values.get('title') || ''),
+        description: String(values.get('description') || ''),
+        seconds: String(values.get('seconds') || ''),
+        continuity: String(values.get('continuity') || 'cut'),
+        dialogue: String(values.get('dialogue') || ''),
+        assetIds: values.getAll('assetIds'),
+      },
+    };
+  }
+
+  document.addEventListener('input', function (event) {
+    var draftForm = event.target.closest && event.target.closest('[data-shot-editor]');
+    if (draftForm) captureShotDraft(draftForm);
+  });
+
+  document.addEventListener('change', function (event) {
+    var changedForm = event.target.closest && event.target.closest('[data-shot-editor]');
+    if (changedForm) captureShotDraft(changedForm);
+  });
+
   document.addEventListener('submit', function (event) {
     var form = event.target.closest('[data-shot-editor]');
     if (!form) return;
@@ -685,10 +732,26 @@
       title: values.get('title'), description: values.get('description'), durationMs: Math.round(Number(values.get('seconds')) * 1000), continuity: values.get('continuity'), assetIds: values.getAll('assetIds'), dialogue: lines.map(function (line) { var at = line.indexOf(':'); return { speaker: line.slice(0, at).trim(), line: line.slice(at + 1).trim() }; })
     } }) }).then(function (payload) {
       state = payload.manifest;
+      state = payload.manifest;
+      delete shotDrafts[form.getAttribute('data-shot-editor')];
+      // Réafficher met à jour data-base-version : sans cela la sauvegarde
+      // suivante repartirait sur une version périmée et serait refusée.
+      renderStoryboardWorkspace();
       renderPanels();
       var message = document.querySelector('[data-shot-save-status]');
       if (message) message.textContent = 'Texte enregistré. Vérifiez l’image si l’action a changé.';
-    }).catch(function (error) { button.disabled = false; status.textContent = error.message; });
+    }).catch(function (error) {
+      button.disabled = false;
+      if (error.status === 409) {
+        status.textContent = 'Ce plan a changé ailleurs. Votre saisie est conservée ; relisez puis réenregistrez.';
+        api('/api/workspace').then(function (payload) {
+          state = payload.manifest || payload;
+          renderStoryboardWorkspace();
+        }).catch(function () {});
+        return;
+      }
+      status.textContent = error.message;
+    });
   });
 
   function storyboardContext() {
@@ -1183,6 +1246,12 @@
   document.addEventListener("click", function (event) {
     var editShot = event.target.closest('[data-edit-shot]');
     if (editShot) { selectedStoryboardShotId = editShot.getAttribute('data-edit-shot'); renderStoryboardWorkspace(); return; }
+    var discardDraft = event.target.closest('[data-discard-draft]');
+    if (discardDraft) {
+      delete shotDrafts[discardDraft.getAttribute('data-discard-draft')];
+      renderStoryboardWorkspace();
+      return;
+    }
     var storyboardAction = event.target.closest('[data-move-shot],[data-duplicate-shot],[data-delete-shot],[data-restore-shot]');
     if (storyboardAction) {
       var move = storyboardAction.getAttribute('data-move-shot');
